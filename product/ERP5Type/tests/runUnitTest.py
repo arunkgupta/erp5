@@ -598,7 +598,7 @@ def runUnitTestList(test_list, verbosity=1, debug=0, run_only=None):
   layer.ZopeLite.setUp() # this will import custom_zodb.py
   def assertFalse():
     assert False
-  layer.onsetup = assertFalse
+  #layer.onsetup = assertFalse
   ZopeLite._theApp._p_jar.close()
   ZopeLite._theApp = None
 
