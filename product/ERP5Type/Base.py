@@ -213,13 +213,13 @@ class ERP5WorkflowMethod(Method):
       for wf_id, transition_list in candidate_transition_item_list:
         valid_list = []
         for transition_id in transition_list:
+          LOG('Executing %s in %s' %(transition_id, wf_id), WARNING, "lol")
           if wf5_module._getOb(wf_id).isERP5WorkflowMethodSupported(instance, wf5_module._getOb(wf_id)._getOb(transition_id)):
-          #if wf5_module._getOb(wf_id)._getOb(transition_id) in instance.getCategoryStateValue().getDestinationValueList():
             valid_list.append(transition_id)
             once_transition_key = once_transition_dict.get((wf_id, transition_id))
             transactional_variable[once_transition_key] = 1
-          #else: ### don't do anything if no supported
-            #raise UnsupportedWorkflowMethod(instance, wf_id, transition_id)
+          else:
+            raise NotImplementedError("The Transition is Unsupported by current state.")
         if valid_list:
           valid_transition_item_list.append((wf_id, valid_list))
 
@@ -1439,6 +1439,7 @@ class Base( CopyContainer,
     """
     if type is not None: # Speed
       if type in list_types: # Patch for OFS PropertyManager
+      # list_type = ('lines', 'tokens', 'selection', 'multiple selection')
         key += '_list'
     accessor_name = '_set' + UpperCase(key)
     aq_self = aq_base(self)
@@ -1512,8 +1513,8 @@ class Base( CopyContainer,
     ERP5PropertyManager._setPropValue(self, key, value)
     #except ConflictError:
     #  raise
-    # This should not be there, because this ignore all checks made by
-    # the PropertyManager. If there is problems, please complain to
+    # This should not be there, because this ignores all checks made by
+    # the PropertyManager. If there are problems, please complain to
     # seb@nexedi.com
     #except:
     #  # This should be removed if we want strict property checking
@@ -1612,7 +1613,6 @@ class Base( CopyContainer,
             for method in permissions[1]:
               if method.startswith('set'):
                 restricted_method_set.add(method)
-
     getProperty = self.getProperty
     hasProperty = self.hasProperty
     _setProperty = self._setProperty
