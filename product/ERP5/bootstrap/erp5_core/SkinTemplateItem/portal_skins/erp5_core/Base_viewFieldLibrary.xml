@@ -2,7 +2,7 @@
 <ZopeData>
   <record id="1" aka="AAAAAAAAAAE=">
     <pickle>
-      <global name="ERP5Form" module="Products.ERP5Form.Form"/>
+      <global name="ERP5 Form" module="erp5.portal_type"/>
     </pickle>
     <pickle>
       <dictionary>
@@ -54,7 +54,6 @@
                 <string>center</string>
                 <string>bottom</string>
                 <string>hidden</string>
-                <string>not_assigned</string>
               </list>
             </value>
         </item>
@@ -77,7 +76,16 @@
                 <item>
                     <key> <string>hidden</string> </key>
                     <value>
-                      <list/>
+                      <list>
+                        <string>my_list_mode_listbox_creation_date</string>
+                        <string>my_list_mode_listbox_description</string>
+                        <string>my_list_mode_listbox_modification_date</string>
+                        <string>my_list_mode_listbox_owner_title</string>
+                        <string>my_view_mode_module_listbox_creation_date</string>
+                        <string>my_view_mode_module_listbox_description</string>
+                        <string>my_view_mode_module_listbox_modification_date</string>
+                        <string>my_view_mode_module_listbox_owner_title</string>
+                      </list>
                     </value>
                 </item>
                 <item>
@@ -137,20 +145,18 @@
                         <string>my_view_mode_id_as_reference</string>
                         <string>my_view_mode_read_only_reference</string>
                         <string>my_email_field</string>
-                        <string>listbox_creation_date</string>
-                        <string>listbox_modification_date</string>
-                        <string>listbox_owner_title</string>
+                        <string>my_view_mode_listbox_creation_date</string>
+                        <string>my_view_mode_listbox_modification_date</string>
+                        <string>my_view_mode_listbox_owner_title</string>
                         <string>my_captcha</string>
                         <string>my_dialog_mode_description</string>
                         <string>my_dialog_mode_title</string>
                         <string>my_dialog_mode_text_content</string>
+                        <string>my_view_mode_listbox_category</string>
+                        <string>my_view_mode_listbox_description</string>
+                        <string>my_view_mode_read_only_id</string>
+                        <string>my_view_mode_reference_as_name</string>
                       </list>
-                    </value>
-                </item>
-                <item>
-                    <key> <string>not_assigned</string> </key>
-                    <value>
-                      <list/>
                     </value>
                 </item>
                 <item>

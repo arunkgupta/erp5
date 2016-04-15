@@ -49,18 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>"""Hook called when a person object is closed.\n
-\n
-We want to reset the reference, which is the user login in ERP5Security.\n
-One exception is when a person object is installed from business template.\n
-"""\n
-is_business_template_installation = context.REQUEST.get(\'is_business_template_installation\', 0)\n
-if not is_business_template_installation:\n
-  context.setReference(None)\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string></string> </value>
         </item>
@@ -73,8 +61,31 @@ if not is_business_template_installation:\n
             </value>
         </item>
         <item>
+            <key> <string>guard</string> </key>
+            <value>
+              <persistent> <string encoding="base64">AAAAAAAAAAI=</string> </persistent>
+            </value>
+        </item>
+        <item>
             <key> <string>id</string> </key>
             <value> <string>Person_afterClone</string> </value>
+        </item>
+      </dictionary>
+    </pickle>
+  </record>
+  <record id="2" aka="AAAAAAAAAAI=">
+    <pickle>
+      <global name="Guard" module="Products.DCWorkflow.Guard"/>
+    </pickle>
+    <pickle>
+      <dictionary>
+        <item>
+            <key> <string>roles</string> </key>
+            <value>
+              <tuple>
+                <string>Owner</string>
+              </tuple>
+            </value>
         </item>
       </dictionary>
     </pickle>

@@ -29,7 +29,6 @@
 ##############################################################################
 
 import unittest
-import time
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from DateTime import DateTime
 
@@ -49,8 +48,7 @@ class TestAuoLogout(ERP5TypeTestCase):
     Return the list of required business templates.
     """
     return ('erp5_core_proxy_field_legacy',
-            'erp5_base',
-            'erp5_auto_logout',)
+            'erp5_base',)
 
   def afterSetUp(self):
     portal = self.getPortal()

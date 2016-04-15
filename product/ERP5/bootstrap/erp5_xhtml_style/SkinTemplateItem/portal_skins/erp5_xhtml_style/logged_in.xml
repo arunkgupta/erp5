@@ -49,27 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-portal = context.getPortalObject()\n
-if portal.portal_skins.updateSkinCookie():\n
-  portal.setupCurrentSkin()\n
-url = REQUEST.get("came_from")\n
-if portal.portal_membership.isAnonymousUser():\n
-  RESPONSE.expireCookie("__ac", path="/")\n
-  url = "%s/login_form?portal_status_message=%s" % (\n
-    context.absolute_url(),\n
-    context.Base_translateString("Login and/or password is incorrect.")\n
-    + ("&amp;came_from=" + url if url else ""))\n
-elif not url:\n
-  url = context.absolute_url()\n
-return RESPONSE.redirect(url)\n
-
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>REQUEST, RESPONSE</string> </value>
         </item>

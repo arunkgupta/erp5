@@ -53,7 +53,6 @@ from cgi import FieldStorage
 from unittest import expectedFailure
 
 import ZPublisher.HTTPRequest
-from Testing import ZopeTestCase
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5Type.tests.ERP5TypeTestCase import  _getConversionServerDict
 from Products.ERP5Type.tests.utils import FileUpload
@@ -62,7 +61,6 @@ from Products.ERP5OOo.OOoUtils import OOoBuilder
 from Products.CMFCore.utils import getToolByName
 from AccessControl.SecurityManagement import newSecurityManager
 from AccessControl import getSecurityManager
-from zLOG import LOG
 from Products.ERP5.Document.Document import NotConvertedError
 from Products.ERP5Form.PreferenceTool import Priority
 from Products.ERP5Type.tests.utils import createZODBPythonScript
@@ -1243,7 +1241,7 @@ class TestDocument(TestDocumentMixin):
     # should return all documents matching a word no matter of contributor
     self.assertSameSet([web_page_1, document_4], getAdvancedSearchStringResultList(**kw))
     kw = {'searchabletext_any': 'owner',
-          'contributor_title': 'Contributor'}
+          'contributor_title': '%Contributor%'}
     self.assertSameSet([document_4], getAdvancedSearchStringResultList(**kw))
 
     # multiple portal_type specified
@@ -1613,7 +1611,7 @@ class TestDocument(TestDocumentMixin):
     image_count = builder._image_count
     failure_message = 'Expected image not found in ODF zipped archive'
     # fetch image from zipped archive content then compare with ERP5 Image
-    self.assertEqual(builder.extract('Pictures/%s.jpeg' % image_count),
+    self.assertEqual(builder.extract('Pictures/%s.pjpg' % image_count),
                       image.getData(), failure_message)
 
     # Continue the test with image resizing support
@@ -1726,6 +1724,7 @@ class TestDocument(TestDocumentMixin):
         <a onclick="javascript:DosomethingNasty()">Another Link</a>
         <p>éàèù</p>
         <p class="Th&#232;mes Thèmes">Th&#232;mes Thèmes</p>
+        <img src="data:image/png;base64,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" />
       </body>
     </html>
     """.decode('utf-8').encode('iso-8859-1')
@@ -1759,6 +1758,8 @@ class TestDocument(TestDocumentMixin):
     self.assertTrue('alert("da");' not in safe_html)
     self.assertTrue('javascript:DosomethingNasty()' not in safe_html)
     self.assertTrue('onclick' not in safe_html)
+    self.assertTrue('<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABsAAAAbCAIAAAACtmMCAAAG' in safe_html)
+    self.assertTrue('7CcvP/PS8U90/wv0LRSL/rwEwgAAAABJRU5ErkJggg=="' in safe_html)
 
     # Check that outputed entire html is safe
     entire_html = web_page.asEntireHTML()
@@ -1775,6 +1776,8 @@ class TestDocument(TestDocumentMixin):
     self.assertTrue('alert("da");' not in entire_html)
     self.assertTrue('javascript:DosomethingNasty()' not in entire_html)
     self.assertTrue('onclick' not in entire_html)
+    self.assertTrue('<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABsAAAAbCAIAAAACtmMCAAAG' in safe_html)
+    self.assertTrue('7CcvP/PS8U90/wv0LRSL/rwEwgAAAABJRU5ErkJggg=="' in safe_html)
 
     # now check converted value is stored in cache
     format = 'html'
@@ -2497,6 +2500,7 @@ return 1
     kw['portal_type'] = "Spreadsheet"
     new_document = self.portal.Base_contribute(**kw)
     self.assertEqual(new_document.getValidationState(), 'draft')
+    self.tic()
 
     # make it read only
     document.manage_permission(Permissions.ModifyPortalContent, [])
@@ -2808,6 +2812,12 @@ return 1
 
     self.assertEqual('archived', document_nolang_005.getValidationState())
     self.assertEqual('shared_alive', document_nolang_006.getValidationState())
+
+    # should ignore already archived document
+    document_nolang_007 = document_nolang_006.Base_createCloneDocument(batch_mode=1)
+    document_nolang_006.archive()
+    document_nolang_007.shareAlive()
+    self.tic()
 
   def testFileWithNotDefinedMimeType(self):
     upload_file = makeFileUpload('TEST-001-en.dummy')

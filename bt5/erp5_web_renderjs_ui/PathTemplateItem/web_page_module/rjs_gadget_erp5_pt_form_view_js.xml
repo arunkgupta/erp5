@@ -98,90 +98,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-/*global window, rJS, RSVP, URI */\n
-/*jslint nomen: true, indent: 2, maxerr: 3 */\n
-(function (window, rJS, RSVP, URI) {\n
-  "use strict";\n
-\n
-  // Precompile the templates while loading the first gadget instance\n
-  var gadget_klass = rJS(window);\n
-\n
-  gadget_klass\n
-    /////////////////////////////////////////////////////////////////\n
-    // ready\n
-    /////////////////////////////////////////////////////////////////\n
-    // Init local properties\n
-    .ready(function (g) {\n
-      g.props = {};\n
-    })\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // Acquired methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareAcquiredMethod("renderPageHeader", "renderPageHeader")\n
-    .declareAcquiredMethod("whoWantToDisplayThisPage", "whoWantToDisplayThisPage")\n
-    .declareAcquiredMethod("whoWantToDisplayThis", "whoWantToDisplayThis")\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // declared methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareMethod(\'render\', function (options) {\n
-      var gadget = this;\n
-      return this.getDeclaredGadget("erp5_form")\n
-        .push(function (form_gadget) {\n
-          var form_options = options.erp5_form || {},\n
-            rendered_form = options.erp5_document._embedded._view,\n
-            rendered_field,\n
-            key;\n
-\n
-          // Remove all empty fields, and mark all others as non editable\n
-          for (key in rendered_form) {\n
-            if (rendered_form.hasOwnProperty(key) && (key[0] !== "_")) {\n
-              rendered_field = rendered_form[key];\n
-              if ((rendered_field.type !== "ListBox") && ((!rendered_field.default) || (rendered_field.hidden === 1) || (rendered_field.default.length === 0))) {\n
-                delete rendered_form[key];\n
-              } else {\n
-                rendered_field.editable = 0;\n
-              }\n
-            }\n
-          }\n
-\n
-          form_options.erp5_document = options.erp5_document;\n
-          form_options.form_definition = options.form_definition;\n
-          form_options.view = options.view;\n
-\n
-          return RSVP.all([\n
-            form_gadget.render(form_options),\n
-            gadget.whoWantToDisplayThisPage({name: options.view, editable: true}),\n
-            gadget.whoWantToDisplayThisPage({page: "action", name: options.view}),\n
-            gadget.whoWantToDisplayThisPage({page: "breadcrumb", name: options.view}),\n
-            gadget.whoWantToDisplayThis((new URI(options.erp5_document._links.parent.href)).segment(2))\n
-          ]);\n
-        })\n
-        .push(function (all_result) {\n
-\n
-          return gadget.renderPageHeader({\n
-            jump_url: "",\n
-            actions_url: all_result[2],\n
-            previous_url: "",\n
-            next_url: "",\n
-            export_url: "",\n
-            edit_url: all_result[1],\n
-            selection_url: all_result[4],\n
-            page_title: options.erp5_document.title,\n
-            breadcrumb_url: all_result[3]\n
-          });\n
-        });\n
-    });\n
-\n
-}(window, rJS, RSVP, URI));
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Form View JS</string> </value>
         </item>
@@ -300,7 +216,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>romain</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -314,7 +230,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>938.194.24732.3993</string> </value>
+                <value> <string>950.28778.3703.7458</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -332,8 +248,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1412343893.37</float>
-                        <string>GMT</string>
+                        <float>1460380730.43</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

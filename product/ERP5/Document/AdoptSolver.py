@@ -27,6 +27,8 @@
 #
 ##############################################################################
 
+from AccessControl import ClassSecurityInfo
+from Products.ERP5Type import Permissions
 from Products.ERP5.mixin.solver import ConfigurablePropertySolverMixin
 
 class AdoptSolver(ConfigurablePropertySolverMixin):
@@ -35,9 +37,11 @@ class AdoptSolver(ConfigurablePropertySolverMixin):
   meta_type = 'ERP5 Adopt Solver'
   portal_type = 'Adopt Solver'
 
-  # ISolver Implementation
-  # XXX-Leo: Needs security declaration! It's currently public.
-  def solve(self, activate_kw=None):
+  # Declarative security
+  security = ClassSecurityInfo()
+  security.declareObjectProtected(Permissions.AccessContentsInformation)
+
+  def _solve(self, activate_kw=None):
     """
     Adopt new property to movements or deliveries.
     """
@@ -79,7 +83,14 @@ class AdoptSolver(ConfigurablePropertySolverMixin):
           # Also, the behaviour below is naive, and could cause another
           # non-divergent Simulation Movement to become divergent.
           for simulation_movement in simulation_movement_list:
-            movement.setProperty(
+            obj = movement
+            while movement.getRootDeliveryValue() is not obj:
+              if obj.hasProperty(solved_property):
+                break
+
+              obj = obj.getParentValue()
+
+            obj.setProperty(
               solved_property,
               simulation_movement.getProperty(solved_property)
             )

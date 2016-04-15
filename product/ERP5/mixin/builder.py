@@ -28,6 +28,7 @@
 ##############################################################################
 
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions, PropertySheet
 from Products.ERP5Type.XMLObject import XMLObject
 from Products.ERP5Type.Core.Predicate import Predicate
@@ -129,9 +130,9 @@ class BuilderMixin(XMLObject, Amount, Predicate):
           if len(business_link_value_list) > 0:
             # use only Business Link related movements
             kw['causality_uid'] = [link_value.getUid() for link_value in business_link_value_list]
-        movement_list = self.searchMovementList(
-          applied_rule_uid=applied_rule_uid,
-          **kw)
+        if applied_rule_uid is not None:
+          kw['applied_rule_uid'] = applied_rule_uid
+        movement_list = self.searchMovementList(**kw)
         if not movement_list:
           return []
     # Collect
@@ -149,6 +150,7 @@ class BuilderMixin(XMLObject, Amount, Predicate):
   def getRelatedBusinessLinkValueList(self):
     return self.getDeliveryBuilderRelatedValueList(portal_type='Business Link')
 
+  security.declarePrivate('callBeforeBuildingScript')
   def callBeforeBuildingScript(self):
     """
       Call a script on the module, for example, to remove some
@@ -166,7 +168,6 @@ class BuilderMixin(XMLObject, Amount, Predicate):
       getattr(delivery_module, delivery_module_before_building_script_id)()
 
   def generateMovementListForStockOptimisation(self, **kw):
-    # XXX: unused
     from Products.ERP5Type.Document import newTempMovement
     movement_list = []
     for attribute, method in [('node_uid', 'getDestinationUid'),
@@ -183,49 +184,85 @@ class BuilderMixin(XMLObject, Amount, Predicate):
                                                    group_by_node=1,
                                                    group_by_section=0,
                                                    **kw)
-    id_count = 0
+    # min_flow and max_delay are stored on a supply line. By default
+    # we can get them through a method having the right supply type prefix
+    # like getPurchaseSupplyLineMinFlow. So we need to guess the supply prefix
+    supply_prefix = ''
+    delivery_type = self.getDeliveryPortalType()
+    portal = self.getPortalObject()
+    if delivery_type in portal.getPortalPurchaseTypeList():
+      supply_prefix = 'purchase'
+    elif delivery_type in portal.getPortalSaleTypeList():
+      supply_prefix = 'sale'
+    else:
+      supply_prefix = 'internal'
+
+    resource_portal_type_list = self.getResourcePortalTypeList()
+    def newMovement(inventory_item, resource):
+      # Create temporary movement
+      movement = newTempMovement(self.getPortalObject(), "temp")
+      dumb_movement = inventory_item.getObject()
+      resource_portal_type = resource.getPortalType()
+      assert resource_portal_type in (resource_portal_type_list), \
+        "Builder %r does not support resource of type : %r" % (
+        self.getRelativeUrl(), resource_portal_type)
+      movement.edit(
+          resource=inventory_item.resource_relative_url,
+          # XXX FIXME define on a supply line
+          # quantity_unit
+          quantity_unit=resource.getQuantityUnit(),
+          variation_category_list=dumb_movement.getVariationCategoryList(),
+          destination_value=self.getDestinationValue(),
+          resource_portal_type=resource_portal_type,
+          destination_section_value=self.getDestinationSectionValue())
+      return movement
+
     for inventory_item in sql_list:
-      # XXX FIXME SQL return None inventory...
-      # It may be better to return always good values
       if (inventory_item.inventory is not None):
-        dumb_movement = inventory_item.getObject()
-        # Create temporary movement
-        movement = newTempMovement(self.getPortalObject(),
-                                   str(id_count))
-        id_count += 1
-        movement.edit(
-            resource=inventory_item.resource_relative_url,
-            variation_category_list=dumb_movement.getVariationCategoryList(),
-            destination_value=self.getDestinationValue(),
-            destination_section_value=self.getDestinationSectionValue())
-        # We can do other test on inventory here
-        # XXX It is better if it can be sql parameters
-        resource_portal_type = self.getResourcePortalType()
-        resource = movement.getResourceValue()
-        # FIXME: XXX Those properties are defined on a supply line !!
-        # min_flow, max_delay
-        min_flow = resource.getMinFlow(0)
-        if (resource.getPortalType() == resource_portal_type) and\
-           (round(inventory_item.inventory, 5) < min_flow):
-          # FIXME XXX getNextNegativeInventoryDate must work
-          stop_date = DateTime()+10
-#         stop_date = resource.getNextNegativeInventoryDate(
-#                               variation_text=movement.getVariationText(),
-#                               from_date=DateTime(),
-# #                             node_category=node_category,
-# #                             section_category=section_category)
-#                               node_uid=self.getDestinationUid(),
-#                               section_uid=self.getDestinationSectionUid())
-          max_delay = resource.getMaxDelay(0)
-          movement.edit(
-            start_date=DateTime(((stop_date-max_delay).Date())),
-            stop_date=DateTime(stop_date.Date()),
-            quantity=min_flow-inventory_item.inventory,
-            quantity_unit=resource.getQuantityUnit()
-            # XXX FIXME define on a supply line
-            # quantity_unit
-          )
-          movement_list.append(movement)
+        resource = portal.portal_catalog.getObject(inventory_item.resource_uid)
+        # Get min_flow, max_delay on supply line
+        min_flow = 0
+        max_delay = 0
+        min_stock = 0
+        if supply_prefix:
+          min_flow = resource.getProperty(supply_prefix + '_supply_line_min_flow', 0)
+          max_delay = resource.getProperty(supply_prefix + '_supply_line_max_delay', 0)
+          min_stock = resource.getProperty(supply_prefix + '_supply_line_min_stock', 0)
+        if round(inventory_item.inventory, 5) < min_stock:
+          stop_date = resource.getNextAlertInventoryDate(
+                               reference_quantity=min_stock,
+                               variation_text=inventory_item.variation_text,
+                               from_date=DateTime(),
+                               **kw)
+          if stop_date != None:
+            movement = newMovement(inventory_item, resource)
+            max_delay = resource.getMaxDelay(0)
+            movement.edit(
+              start_date=stop_date-max_delay,
+              stop_date=stop_date,
+              quantity=max(min_flow, -inventory_item.inventory),
+            )
+            movement_list.append(movement)
+        # We could need to cancel automated stock optimization if for some reasons
+        # previous optimisations are obsolete
+        elif round(inventory_item.inventory, 5) > min_stock:
+          delta = inventory_item.inventory - min_stock
+          optimized_inventory_list = portal.portal_simulation.getInventoryList(
+                               resource_uid=inventory_item.resource_uid,
+                               node_uid=inventory_item.node_uid,
+                               variation_text=inventory_item.variation_text,
+                               simulation_state="auto_planned",
+                               sort_on=[("date", "descending")],
+                               )
+          for optimized_inventory in optimized_inventory_list:
+            movement = newMovement(inventory_item, resource)
+            quantity = min(delta, optimized_inventory.inventory)
+            delta = delta - quantity
+            movement.edit(start_date=optimized_inventory.date,
+                          quantity=-quantity)
+            movement_list.append(movement)
+            if delta <= 0:
+              break
     return movement_list
 
   def _searchMovementList(self, **kw):
@@ -234,7 +271,7 @@ class BuilderMixin(XMLObject, Amount, Predicate):
       simulation movements) to construct a new delivery.
     """
     method_id = self.getSimulationSelectMethodId() or 'portal_catalog'
-    select_method = getattr(self.getPortalObject(), method_id)
+    select_method = getattr(self, method_id)
 
     movement_list = [] # use list to preserve order
     movement_set = set()
@@ -248,8 +285,10 @@ class BuilderMixin(XMLObject, Amount, Predicate):
 
     return movement_list
 
+  security.declarePrivate('searchMovementList')
   searchMovementList = UnrestrictedMethod(_searchMovementList)
 
+  security.declarePrivate('collectMovement')
   def collectMovement(self, movement_list):
     """
       group movements in the way we want. Thanks to this method, we are able
@@ -330,6 +369,7 @@ class BuilderMixin(XMLObject, Amount, Predicate):
                             for movement_group_node in movement_group_node_list]
     return instance, self._getSortedPropertyDict(property_dict_list)
 
+  security.declarePrivate('buildDeliveryList')
   @UnrestrictedMethod
   def buildDeliveryList(self, movement_group_node,
                         delivery_relative_url_list=None,
@@ -430,8 +470,8 @@ class BuilderMixin(XMLObject, Amount, Predicate):
 
       if delivery is None:
         if not self.isDeliveryCreatable():
-          raise SelectMethodError('No updatable delivery found with %s' \
-                  % (self.getPath(),))
+          raise SelectMethodError('No updatable delivery found with %s for %s' \
+                  % (self.getPath(), movement_group_node_list))
 
         delivery = self._createDelivery(delivery_module,
                                         movement_group_node.getMovementList(),
@@ -676,14 +716,12 @@ class BuilderMixin(XMLObject, Amount, Predicate):
     if not update_existing_movement or force_update:
       # Now, only 1 movement is possible, so copy from this movement
       # XXX hardcoded value
-      if getattr(simulation_movement, 'getMappedProperty', None) is not None:
-        property_dict['quantity'] = simulation_movement.getMappedProperty('quantity')
-      else:
-        property_dict['quantity'] = simulation_movement.getQuantity()
+      property_dict['quantity'] = simulation_movement.getQuantity()
       property_dict['price'] = simulation_movement.getPrice()
       # Update properties on object (quantity, price...)
       delivery_movement._edit(force_update=1, **property_dict)
 
+  security.declarePrivate('callAfterBuildingScript')
   @UnrestrictedMethod
   def callAfterBuildingScript(self, delivery_list, movement_list=(), **kw):
     """
@@ -784,3 +822,4 @@ class BuilderMixin(XMLObject, Amount, Predicate):
   _deliveryLineGroupProcessing = _processDeliveryLineGroup
   _deliveryCellGroupProcessing = _processDeliveryCellGroup
 
+InitializeClass(BuilderMixin)

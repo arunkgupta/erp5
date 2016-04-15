@@ -16,13 +16,16 @@
 # Optimized rendering of global actions (cache)
 
 from Products.ERP5Type.Globals import DTMLFile
-from Products.ERP5Type import _dtmldir
+from Products.ERP5Type import Permissions, _dtmldir
 from Products.DCWorkflow.DCWorkflow import DCWorkflowDefinition, StateChangeInfo, createExprContext
 from Products.DCWorkflow.DCWorkflow import ObjectDeleted, ObjectMoved, aq_parent, aq_inner
 from Products.DCWorkflow import DCWorkflow
 from Products.DCWorkflow.Transitions import TRIGGER_WORKFLOW_METHOD, TransitionDefinition
 from Products.DCWorkflow.Transitions import TRIGGER_USER_ACTION
+from Products.DCWorkflow.permissions import ManagePortal
 from AccessControl import getSecurityManager, ModuleSecurityInfo, Unauthorized
+from AccessControl.SecurityInfo import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.CMFCore.utils import getToolByName
 from Products.CMFCore.WorkflowCore import WorkflowException
 from Products.CMFCore.utils import  _getAuthenticatedUser
@@ -107,6 +110,7 @@ def Guard_checkWithoutRoles(self, sm, wf_def, ob, **kw):
             return 0
     return 1
 
+DCWorkflowDefinition.security = ClassSecurityInfo()
 
 def DCWorkflowDefinition_listGlobalActions(self, info):
     '''
@@ -333,7 +337,16 @@ def DCWorkflowDefinition_getWorklistVariableMatchDict(self, info,
     return None
   return variable_match_dict
 
+DCWorkflowDefinition.security.declarePrivate('getWorklistVariableMatchDict')
 DCWorkflowDefinition.getWorklistVariableMatchDict = DCWorkflowDefinition_getWorklistVariableMatchDict
+
+TransitionDefinition__init__orig = TransitionDefinition.__init__
+def TransitionDefinition__init__(self, *args, **kw):
+  TransitionDefinition__init__orig(self, *args, **kw)
+  self.guard = Guard()
+  self.guard.permissions = ('Modify portal content',)
+
+TransitionDefinition.__init__ = TransitionDefinition__init__
 
 class ValidationFailed(Exception):
     """Transition can not be executed because data is not in consistent state"""
@@ -696,6 +709,8 @@ def getPortalTypeListForWorkflow(self):
       result.append(portal_type)
   return result
 
+DCWorkflowDefinition.security.declareProtected(Permissions.AccessContentsInformation,
+                                               'getPortalTypeListForWorkflow')
 DCWorkflowDefinition.getPortalTypeListForWorkflow = getPortalTypeListForWorkflow
 
 def DCWorkflowDefinition_getFutureStateSet(self, state, ignore=(),
@@ -716,8 +731,10 @@ def DCWorkflowDefinition_getFutureStateSet(self, state, ignore=(),
       self.getFutureStateSet(state, ignore, _future_state_set)
   return _future_state_set
 
+DCWorkflowDefinition.security.declarePrivate('getFutureStateSet')
 DCWorkflowDefinition.getFutureStateSet = DCWorkflowDefinition_getFutureStateSet
 
+InitializeClass(DCWorkflowDefinition)
 
 # This patch allows to use workflowmethod as an after_script
 # However, the right way of doing would be to have a combined state of TRIGGER_USER_ACTION and TRIGGER_WORKFLOW_METHOD
@@ -737,3 +754,78 @@ def getAvailableScriptIds(self):
 
 TransitionDefinition.getAvailableScriptIds = getAvailableScriptIds
 
+if True:
+    def Guard_check(self, sm, wf_def, ob, **kw):
+        """Checks conditions in this guard
+        """
+        u_roles = None
+        # PATCH BEGIN
+        # This method returns roles, considering proxy roles in caller
+        # scripts.
+        # XXX : If we need this method somewhere else, it should be
+        # added in SecurityManager class.
+        def getRoles():
+            stack = sm._context.stack
+            if stack:
+                eo = stack[-1]
+                proxy_roles = getattr(eo, '_proxy_roles', None)
+                if proxy_roles:
+                    return proxy_roles
+            return sm.getUser().getRolesInContext(ob)
+        # PATCH END
+        if wf_def.manager_bypass:
+            # Possibly bypass.
+            # PATCH BEGIN
+            u_roles = getRoles()
+            # PATCH END
+            if 'Manager' in u_roles:
+                return 1
+        if self.permissions:
+            for p in self.permissions:
+                if _checkPermission(p, ob):
+                    break
+            else:
+                return 0
+        if self.roles:
+            # Require at least one of the given roles.
+            if u_roles is None:
+                # PATCH BEGIN
+                u_roles = getRoles()
+                # PATCH END
+            for role in self.roles:
+                if role in u_roles:
+                    break
+            else:
+                return 0
+        if self.groups:
+            # Require at least one of the specified groups.
+            u = sm.getUser()
+            b = aq_base( u )
+            if hasattr( b, 'getGroupsInContext' ):
+                u_groups = u.getGroupsInContext( ob )
+            elif hasattr( b, 'getGroups' ):
+                u_groups = u.getGroups()
+            else:
+                u_groups = ()
+            for group in self.groups:
+                if group in u_groups:
+                    break
+            else:
+                return 0
+        expr = self.expr
+        if expr is not None:
+            econtext = createExprContext(
+                StateChangeInfo(ob, wf_def, kwargs=kw))
+            res = expr(econtext)
+            if not res:
+                return 0
+        return 1
+
+Guard.check = Guard_check
+
+# Add class security in DCWorkflow.Variables.Variables.
+from Products.DCWorkflow.Variables import Variables
+security = ClassSecurityInfo()
+security.declareObjectProtected(ManagePortal)
+Variables.security = security
+InitializeClass(Variables)

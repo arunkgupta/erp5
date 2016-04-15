@@ -156,6 +156,103 @@
             </value>
         </item>
         <item>
+            <key> <string>_local_properties</string> </key>
+            <value>
+              <tuple>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_hateoas_url</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_application_title</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_view_action_category</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_default_view_action_reference</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_translation_gadget_url</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_jio_gadget_url</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_panel_gadget_url</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_header_gadget_url</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+                <dictionary>
+                  <item>
+                      <key> <string>id</string> </key>
+                      <value> <string>configuration_content_security_policy</string> </value>
+                  </item>
+                  <item>
+                      <key> <string>type</string> </key>
+                      <value> <string>string</string> </value>
+                  </item>
+                </dictionary>
+              </tuple>
+            </value>
+        </item>
+        <item>
             <key> <string>_mt_index</string> </key>
             <value>
               <persistent> <string encoding="base64">AAAAAAAAAAU=</string> </persistent>
@@ -174,6 +271,10 @@
             </value>
         </item>
         <item>
+            <key> <string>authorization_forced</string> </key>
+            <value> <int>0</int> </value>
+        </item>
+        <item>
             <key> <string>available_language</string> </key>
             <value>
               <tuple>
@@ -186,8 +287,47 @@
             <value>
               <tuple>
                 <string>aggregate/web_page_module/rjs_gadget_erp5_html</string>
+                <string>caching_policy/must-revalidate</string>
               </tuple>
             </value>
+        </item>
+        <item>
+            <key> <string>configuration_application_title</string> </key>
+            <value> <string>ERP5</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_content_security_policy</string> </key>
+            <value> <string>default-src \'none\'; img-src \'self\' data:; media-src \'self\' blob:; connect-src \'self\' data:; script-src \'self\' \'unsafe-eval\'; font-src netdna.bootstrapcdn.com; style-src \'self\' netdna.bootstrapcdn.com \'unsafe-inline\' data:; frame-src \'self\' data:</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_default_view_action_reference</string> </key>
+            <value> <string>view</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_hateoas_url</string> </key>
+            <value> <string>hateoas/</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_header_gadget_url</string> </key>
+            <value>
+              <none/>
+            </value>
+        </item>
+        <item>
+            <key> <string>configuration_jio_gadget_url</string> </key>
+            <value> <string>gadget_erp5_jio.html</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_panel_gadget_url</string> </key>
+            <value> <string>gadget_erp5_panel.html</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_translation_gadget_url</string> </key>
+            <value> <string>gadget_translation.html</string> </value>
+        </item>
+        <item>
+            <key> <string>configuration_view_action_category</string> </key>
+            <value> <string>object_view</string> </value>
         </item>
         <item>
             <key> <string>container_layout</string> </key>
@@ -203,9 +343,7 @@
         </item>
         <item>
             <key> <string>description</string> </key>
-            <value>
-              <none/>
-            </value>
+            <value> <string>RenderJS Gadget ERP5</string> </value>
         </item>
         <item>
             <key> <string>id</string> </key>
@@ -213,9 +351,7 @@
         </item>
         <item>
             <key> <string>layout_configuration_form_id</string> </key>
-            <value>
-              <none/>
-            </value>
+            <value> <string>WebSection_viewRenderJSPreference</string> </value>
         </item>
         <item>
             <key> <string>portal_type</string> </key>
@@ -355,7 +491,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>romain</string> </value>
+                <value> <string>superklaus</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -377,8 +513,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1404981321.93</float>
-                        <string>GMT</string>
+                        <float>1447856705.38</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>
@@ -422,7 +558,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>936.22999.3755.45004</string> </value>
+                <value> <string>948.41578.48996.21572</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -440,8 +576,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1405933462.45</float>
-                        <string>GMT</string>
+                        <float>1453456043.51</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

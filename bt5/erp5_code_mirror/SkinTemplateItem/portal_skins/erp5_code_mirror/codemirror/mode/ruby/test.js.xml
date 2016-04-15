@@ -7,8 +7,12 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>_EtagSupport__etag</string> </key>
-            <value> <string>ts93403091.86</string> </value>
+            <value> <string>ts60604384.38</string> </value>
         </item>
         <item>
             <key> <string>__name__</string> </key>
@@ -19,27 +23,12 @@
             <value> <string>application/javascript</string> </value>
         </item>
         <item>
-            <key> <string>data</string> </key>
-            <value> <string>(function() {\n
-  var mode = CodeMirror.getMode({indentUnit: 2}, "ruby");\n
-  function MT(name) { test.mode(name, mode, Array.prototype.slice.call(arguments, 1)); }\n
-\n
-  MT("divide_equal_operator",\n
-     "[variable bar] [operator /=] [variable foo]");\n
-\n
-  MT("divide_equal_operator_no_spacing",\n
-     "[variable foo][operator /=][number 42]");\n
-\n
-})();\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>precondition</string> </key>
             <value> <string></string> </value>
         </item>
         <item>
             <key> <string>size</string> </key>
-            <value> <int>342</int> </value>
+            <value> <int>470</int> </value>
         </item>
         <item>
             <key> <string>title</string> </key>

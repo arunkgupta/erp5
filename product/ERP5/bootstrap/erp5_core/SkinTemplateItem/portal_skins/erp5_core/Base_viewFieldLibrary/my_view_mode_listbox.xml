@@ -189,11 +189,19 @@
                     <value> <string></string> </value>
                 </item>
                 <item>
+                    <key> <string>default_display_style</string> </key>
+                    <value> <string></string> </value>
+                </item>
+                <item>
                     <key> <string>default_params</string> </key>
                     <value> <string></string> </value>
                 </item>
                 <item>
                     <key> <string>description</string> </key>
+                    <value> <string></string> </value>
+                </item>
+                <item>
+                    <key> <string>display_style_list</string> </key>
                     <value> <string></string> </value>
                 </item>
                 <item>
@@ -225,6 +233,10 @@
                     <value> <string></string> </value>
                 </item>
                 <item>
+                    <key> <string>global_search_column</string> </key>
+                    <value> <string></string> </value>
+                </item>
+                <item>
                     <key> <string>hidden</string> </key>
                     <value> <string></string> </value>
                 </item>
@@ -250,6 +262,10 @@
                 </item>
                 <item>
                     <key> <string>meta_types</string> </key>
+                    <value> <string></string> </value>
+                </item>
+                <item>
+                    <key> <string>page_navigation_template</string> </key>
                     <value> <string></string> </value>
                 </item>
                 <item>
@@ -304,6 +320,10 @@
                 </item>
                 <item>
                     <key> <string>stat_method</string> </key>
+                    <value> <string></string> </value>
+                </item>
+                <item>
+                    <key> <string>style_columns</string> </key>
                     <value> <string></string> </value>
                 </item>
                 <item>
@@ -568,7 +588,7 @@
             <key> <string>_text</string> </key>
             <value> <string encoding="cdata"><![CDATA[
 
-string:Base_viewListMode?proxy_form_id=${form/getId}&proxy_field_id=${field/getId}
+string:Base_viewListMode?proxy_form_id=${form/getId}&proxy_field_id=${field/getId}&proxy_field_selection_name=${field/selection_name}
 
 ]]></string> </value>
         </item>
@@ -583,7 +603,7 @@ string:Base_viewListMode?proxy_form_id=${form/getId}&proxy_field_id=${field/getI
       <dictionary>
         <item>
             <key> <string>_text</string> </key>
-            <value> <string>python: \'%s_%s_selection\' % (form.getId(), field.getId())</string> </value>
+            <value> <string>python: \'%s_%s_selection\' % (request.get("proxy_form_id") or context.portal_selections.getSelectionParamsFor(\'%s_list_mode_proxy_selection\' % context.REQUEST.get(\'selection_name\', \'\')).get(\'proxy_form_id\') or form.getId(), request.get("proxy_field_id") or context.portal_selections.getSelectionParamsFor(\'%s_list_mode_proxy_selection\' % context.REQUEST.get(\'selection_name\', \'\')).get(\'proxy_field_id\') or field.getId())</string> </value>
         </item>
       </dictionary>
     </pickle>

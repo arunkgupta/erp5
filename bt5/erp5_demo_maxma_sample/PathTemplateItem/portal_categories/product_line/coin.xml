@@ -74,9 +74,7 @@
         <item>
             <key> <string>categories</string> </key>
             <value>
-              <tuple>
-                <string>product_line/Coin</string>
-              </tuple>
+              <tuple/>
             </value>
         </item>
         <item>

@@ -49,27 +49,35 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>from DateTime import DateTime\n
-\n
-period_list = context.getParentValue().searchFolder(\n
-           simulation_state=[\'started\', \'confirmed\', \'delivered\'],\n
-           sort_on=[(\'delivery.stop_date\', \'ASC\'),] )\n
-\n
-if period_list:\n
-  last_period  = period_list[-1].getObject()\n
-  new_date = last_period.getStopDate() + 1\n
-  context.setStartDate(new_date)\n
-  context.setStopDate(DateTime(new_date.year(), 12, 31))\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>*args, **kw</string> </value>
         </item>
         <item>
+            <key> <string>guard</string> </key>
+            <value>
+              <persistent> <string encoding="base64">AAAAAAAAAAI=</string> </persistent>
+            </value>
+        </item>
+        <item>
             <key> <string>id</string> </key>
             <value> <string>AccountingPeriod_init</string> </value>
+        </item>
+      </dictionary>
+    </pickle>
+  </record>
+  <record id="2" aka="AAAAAAAAAAI=">
+    <pickle>
+      <global name="Guard" module="Products.DCWorkflow.Guard"/>
+    </pickle>
+    <pickle>
+      <dictionary>
+        <item>
+            <key> <string>roles</string> </key>
+            <value>
+              <tuple>
+                <string>Owner</string>
+              </tuple>
+            </value>
         </item>
       </dictionary>
     </pickle>

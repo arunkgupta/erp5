@@ -32,16 +32,15 @@ import MethodObject
 
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5Type.Utils import getMessageIdWithContext
-from zLOG import LOG
 
 # dependency order
 target_business_templates = (
   'erp5_base',
   'erp5_simulation',
+  'erp5_pdm',
   'erp5_trade',
 
   'erp5_pdf_editor',
-  'erp5_pdm',
   'erp5_accounting',
   'erp5_invoicing',
 

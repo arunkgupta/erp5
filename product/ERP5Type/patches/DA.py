@@ -21,12 +21,17 @@ from Shared.DC.ZRDB.DA import DA, DatabaseError, SQLMethodTracebackSupplement
 from Shared.DC.ZRDB import RDB
 from Shared.DC.ZRDB.Results import Results
 from App.Extensions import getBrain
-from AccessControl import getSecurityManager
+from AccessControl import ClassSecurityInfo, getSecurityManager 
+from Products.ERP5Type.Globals import InitializeClass
 from Acquisition import aq_base, aq_parent
 from zLOG import LOG, INFO, ERROR
 from string import find
 from cStringIO import StringIO
+from Products.ERP5Type import Permissions
 import sys
+
+security = ClassSecurityInfo()
+DA.security = security
 
 def DA_fromFile(self, filename):
   """
@@ -254,85 +259,16 @@ def DA__call__(self, REQUEST=None, __ick__=None, src__=0, test__=0, **kw):
 
     return result
 
-def _getTableSchema(query, name,
-        create_lstrip = re.compile(r"[^(]+\(\s*").sub,
-        create_rmatch = re.compile(r"(.*\S)\s*\)[^)]+\s"
-          "(DEFAULT(\s+(CHARSET|COLLATE)=\S+)+).*$", re.DOTALL).match,
-        create_split  = re.compile(r",\n\s*").split,
-        column_match  = re.compile(r"`(\w+)`\s+(.+)").match,
-        ):
-    (_, schema), = query("SHOW CREATE TABLE " + name)[1]
-    column_list = []
-    key_set = set()
-    m = create_rmatch(create_lstrip("", schema, 1))
-    for spec in create_split(m.group(1)):
-        if "KEY" in spec:
-            key_set.add(spec)
-        else:
-            column_list.append(column_match(spec).groups())
-    return column_list, key_set, m.group(2)
-
-_create_search = re.compile(r'\bCREATE\s+TABLE\s+(`?)(\w+)\1\s+', re.I).search
-_key_search = re.compile(r'\bKEY\s+(`[^`]+`)\s+(.+)').search
-
-def DA_upgradeSchema(self, connection_id=None, src__=0):
-    query = self.getPortalObject()[connection_id or self.connection_id]().query
-    src = self(src__=1)
-    m = _create_search(src)
-    if m is None:
-        return
-    name = m.group(2)
-
-    old_list, old_set, old_default = _getTableSchema(query, name)
-
-    name_new = '_%s_new' % name
-    query('CREATE TEMPORARY TABLE %s %s' % (name_new, src[m.end():]))
-    try:
-        new_list, new_set, new_default = _getTableSchema(query, name_new)
-    finally:
-        query("DROP TEMPORARY TABLE " + name_new)
-
-    src = []
-    q = src.append
-    if old_default != new_default:
-      q(new_default)
-
-    old_dict = {}
-    new = {column[0] for column in new_list}
-    for pos, (column, spec) in enumerate(old_list):
-      if column in new:
-          old_dict[column] = pos, spec
-      else:
-          q("DROP COLUMN " + column)
-
-    for key in old_set - new_set:
-      if "PRIMARY" in key:
-          q("DROP PRIMARY KEY")
-      else:
-          q("DROP KEY " + _key_search(key).group(1))
-
-    pos = 0
-    where = "FIRST"
-    for column, spec in new_list:
-        try:
-            if  old_dict[column] != (pos, spec):
-                q("MODIFY COLUMN %s %s %s" % (column, spec, where))
-            pos += 1
-        except KeyError:
-            q("ADD COLUMN %s %s %s" % (column, spec, where))
-        where = "AFTER " + column
-
-    for key in new_set - old_set:
-        q("ADD " + key)
-
-    if src:
-        src = "ALTER TABLE %s%s" % (name, ','.join("\n  " + q for q in src))
-        if not src__:
-            query(src)
-        return src
+def DA_upgradeSchema(self, connection_id=None, create_if_not_exists=False,
+                           initialize=None, src__=0, **kw):
+    return self.getPortalObject()[connection_id or self.connection_id]() \
+        .upgradeSchema(self(src__=1, **kw), create_if_not_exists,
+                       initialize, src__)
 
 DA.__call__ = DA__call__
+security.declarePrivate('fromFile')
 DA.fromFile = DA_fromFile
+security.declarePrivate('fromText')
 DA.fromText = DA_fromText
 DA.manage_FTPget = DA_manage_FTPget
 DA.PUT = DA_PUT
@@ -368,3 +304,4 @@ if hasattr(Shared.DC.ZRDB.DA, 'getObject'):
 
 import App.Extensions
 App.Extensions.getObject = getObjectMeta(App.Extensions.getObject)
+InitializeClass(DA)

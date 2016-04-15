@@ -15,6 +15,18 @@
   <item>ScalabilityTestSuite</item>
   <item>TestSuite</item>
  </portal_type>
+ <portal_type id="SlapOS Agent Distributor">
+  <item>ScalabilityDistributor</item>
+ </portal_type>
+ <portal_type id="SlapOS Agent Test Suite">
+  <item>Arrow</item>
+  <item>TestSuite</item>
+ </portal_type>
+ <portal_type id="SlapOS Software Release Unit Test">
+  <item>Arrow</item>
+  <item>SlapOSSoftwareReleaseUnitTest</item>
+  <item>Url</item>
+ </portal_type>
  <portal_type id="Test Node">
   <item>DublinCore</item>
   <item>TestNode</item>
@@ -25,12 +37,18 @@
   <item>Task</item>
  </portal_type>
  <portal_type id="Test Result Line">
+  <item>CommandLineResult</item>
   <item>SortIndex</item>
+  <item>Task</item>
+ </portal_type>
+ <portal_type id="Test Result Node">
+  <item>CommandLineResult</item>
   <item>Task</item>
  </portal_type>
  <portal_type id="Test Suite">
   <item>Arrow</item>
   <item>Reference</item>
+  <item>ScalabilityTestSuite</item>
   <item>SortIndex</item>
   <item>TestSuite</item>
   <item>TestSuiteConstraint</item>

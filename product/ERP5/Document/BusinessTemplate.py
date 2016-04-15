@@ -62,6 +62,7 @@ from Products.ERP5Type.Utils import readLocalTest, \
 from Products.ERP5Type.Utils import convertToUpperCase
 from Products.ERP5Type import Permissions, PropertySheet, interfaces
 from Products.ERP5Type.XMLObject import XMLObject
+from Products.ERP5Type.dynamic.lazy_class import ERP5BaseBroken, InitGhostBase
 from Products.ERP5Type.dynamic.portal_type_class import synchronizeDynamicModules
 from Products.ERP5Type.Core.PropertySheet import PropertySheet as PropertySheetDocument
 from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
@@ -101,6 +102,12 @@ try:
 except TypeError:
   pass
 cache_database = threading.local()
+from mimetypes import guess_extension
+from mimetypes import MimeTypes
+from Products.MimetypesRegistry.common import MimeTypeException
+import base64
+import binascii
+import imghdr
 
 # those attributes from CatalogMethodTemplateItem are kept for
 # backward compatibility
@@ -656,6 +663,21 @@ class BaseTemplateItem(Implicit, Persistent):
     else:
       return context
 
+  def _resetDynamicModules(self):
+    # before any import, flush all ZODB caches to force a DB reload
+    # otherwise we could have objects trying to get commited while
+    # holding reference to a class that is no longer the same one as
+    # the class in its import location and pickle doesn't tolerate it.
+    # First we do a savepoint to dump dirty objects to temporary
+    # storage, so that all references to them can be freed.
+    transaction.savepoint(optimistic=True)
+    # Then we need to flush from all caches, not only the one from this
+    # connection
+    portal = self.getPortalObject()
+    portal._p_jar.db().cacheMinimize()
+    synchronizeDynamicModules(portal, force=True)
+    gc.collect()
+
 class ObjectTemplateItem(BaseTemplateItem):
   """
     This class is used for generic objects and as a subclass.
@@ -670,19 +692,290 @@ class ObjectTemplateItem(BaseTemplateItem):
         if id != '':
           self._archive["%s/%s" % (tool_id, id)] = None
 
-  def export(self, context, bta, **kw):
+  def getClassNameAndExportedExtensionDict(self):
+    class_name_and_exported_extension_dict = {
+      "Web Page": {"extension": None, "exported_property_type": "text_content"},
+      "Web Style": {"extension": None, "exported_property_type": "text_content"},
+      "Web Script": {"extension": None, "exported_property_type": "text_content"},
+      "Test Page": {"extension": None, "exported_property_type": "text_content"},
+      "ZopePageTemplate": {"extension": ".zpt", "exported_property_type": "_text"},
+      "OOoTemplate": {"extension": ".oot", "exported_property_type": "_text"},
+      "Extension Component": {"extension": ".py", "exported_property_type": "text_content"},
+      "Test Component": {"extension": ".py", "exported_property_type": "text_content"},
+      "Document Component": {"extension": ".py", "exported_property_type": "text_content"},
+      "PythonScript": {"extension": ".py", "exported_property_type": "_body"},
+      "Python Script": {"extension": ".py", "exported_property_type": "_body"},
+      "Image": {"extension": None, "exported_property_type": "data"},
+      "File": {"extension": None, "exported_property_type": "data"},
+      "DTMLMethod": {"extension": None, "exported_property_type": "raw"},
+      "SQL": {"extension": '.sql', "exported_property_type": "src"},
+      "Spreadsheet": {"extension": None, "exported_property_type": "data"},
+      "PDF": {"extension": '.pdf', "exported_property_type": "data"}
+      }
+    return class_name_and_exported_extension_dict
+
+  def getPropertyAndExtensionExportedSeparatelyDict(self, document, key):
+    """Returns a dictionary with one element in the type of
+      {exported_property_type: extension}
+
+    exported_property_type is the key of the document where the actual data
+    exists. E.g. for a Extension Component this is 'text_content', while for a
+    PythonScript it is'_body'.
+
+    The extension can be default for some Portal Types, e.g. for PythonScript it
+    is always '.py', but for others like File guessExtensionOfDocument is used
+    to identify it.
+    """
+    class_name = document.__class__.__name__
+    class_name_and_exported_extension_dict = self.getClassNameAndExportedExtensionDict()
+    if class_name in class_name_and_exported_extension_dict.keys():
+      extension = class_name_and_exported_extension_dict[class_name]["extension"]
+      exported_property_type = class_name_and_exported_extension_dict[class_name]["exported_property_type"]
+      if extension:
+        return {exported_property_type: extension}
+      else:
+        extension = self.guessExtensionOfDocument(document, key, exported_property_type)
+        if extension:
+          # if the obtained extension was .xml, change it to ._xml so that it
+          # would not conflict with th .xml metadata document
+          if extension == '.xml':
+            extension = '._xml'
+          return {exported_property_type: extension}
+    return {}
+
+  def getMimetypesRegistryLookupResultOfContenType(self, content_type):
+    """Returns a lookup in mimetypes_registry based on the content_type"""
+    mimetypes_registry = self.getPortalObject().mimetypes_registry
+    try:
+      return mimetypes_registry.lookup(content_type)
+    except MimeTypeException:
+      return
+
+  def guessExtensionOfDocument(self, document, key, exported_property_type=None):
+    """Guesses and returns the extension of an ERP5 document.
+
+    The process followed is:
+    1. Try to guess extension by content type
+    2. Try to guess extension by the id of the document
+    3. Try to guess extension by the title of the document
+    4. Try to guess extension by the reference of the document
+    5. In the case of an image, try to guess extension by Base64 representation
+
+    In case everything fails then:
+    - '.bin' is returned for binary files
+    - '.txt' is returned for text
+    """
+    # Try to guess the extension based on the content_type of the document
+    # XXX Zope items like DTMLMethod would not
+    # implement getContentType method
+    extension = None
+    binary = 'not_identified'
+    content_type = None
+    if hasattr(document, 'getContentType'):
+      content_type = document.getContentType()
+    elif isinstance(document, ERP5BaseBroken):
+      content_type = getattr(document, "content_type", None)
+    if content_type:
+      lookup_result = self.getMimetypesRegistryLookupResultOfContenType(content_type)
+      if lookup_result:
+        # return first registered Extension (if any)
+        if lookup_result[0].extensions:
+          extension = lookup_result[0].extensions[0]
+        # If there is no extension return the first registered Glob (if any)
+        elif lookup_result[0].globs:
+          extension = str(lookup_result[0].globs[0]).replace('*', '')
+        if hasattr(lookup_result[0], 'binary'):
+          binary = lookup_result[0].binary
+      if extension:
+        if not extension.startswith('.'):
+          extension = '.'+extension
+        return extension
+    # Try to guess the extension based on the id of the document
+    mime = MimeTypes()    
+    mime_type = mime.guess_type(key)
+    if mime_type[0]:
+      extension = guess_extension(mime_type[0])
+      return extension
+    # Try to guess the extension based on the reference of the document
+    mime = MimeTypes()
+    reference = None
+    if hasattr(document, 'getReference'):
+      reference = document.getReference()
+    elif isinstance(document, ERP5BaseBroken):
+      reference = getattr(document, "reference", None)
+    if reference:
+      mime_type = mime.guess_type(reference)
+      if mime_type[0]:
+        extension = guess_extension(mime_type[0])
+        return extension
+    # Try to guess the extension based on the title of the document
+    title = getattr(document, "title", None)
+    if title:
+      mime_type = mime.guess_type(title)
+      if mime_type[0]:
+        extension = guess_extension(mime_type[0])
+        return extension
+    # Try to get type of image from its base64 encoding
+    if exported_property_type == 'data':
+      # XXX maybe decoding the whole file just for the extension is an overkill
+      data = str(document.__dict__.get('data'))
+      try:
+        decoded_data = base64.decodestring(data)
+        for test in imghdr.tests:
+          extension = test(decoded_data, None)
+          if extension:
+            return '.'+extension
+      except binascii.Error:
+        LOG('BusinessTemplate ', 0, 'data is not base 64')
+    # in case we could not read binary flag from mimetypes_registry then return
+    # '.bin' for all the Portal Types where exported_property_type is data
+    # (File, Image, Spreadsheet). Otherwise, return .bin if binary was returned
+    # as 1.
+    if (binary == 'not_identified' and exported_property_type == 'data') or \
+       binary == 1:
+      return '.bin'
+    # in all other cases return .txt
+    return '.txt'
+      
+  def export(self, context, bta, catalog_method_template_item = 0, **kw):
     """
       Export the business template : fill the BusinessTemplateArchive with
       objects exported as XML, hierarchicaly organised.
     """
     if len(self._objects.keys()) == 0:
       return
-    path = self.__class__.__name__
+    path = self.__class__.__name__ + '/'
     for key, obj in self._objects.iteritems():
-      # export object in xml
-      f = StringIO()
-      XMLExportImport.exportXML(obj._p_jar, obj._p_oid, f)
-      bta.addObject(f, key, path=path)
+      class_name = obj.__class__.__name__
+      property_and_extension_exported_separately_dict = self.getPropertyAndExtensionExportedSeparatelyDict(obj, key)
+      # Back compatibility with filesystem Documents
+      if isinstance(obj, str):
+        if not key.startswith(path):
+          key = path + key
+        bta.addObject(obj, name=key, ext='.py')
+      else:
+        if property_and_extension_exported_separately_dict:
+          for record_id, record in property_and_extension_exported_separately_dict.iteritems():
+            extension = record
+            exported_property_type = record_id
+            if hasattr(obj, exported_property_type):
+              exported_property = getattr(obj, exported_property_type)
+              if isinstance(exported_property, unicode):
+                exported_property = str(exported_property.encode('utf-8'))
+              elif not isinstance(exported_property, str):
+                exported_property = str(exported_property)
+
+              reset_output_encoding = False
+              if hasattr(obj, 'output_encoding'):
+                reset_output_encoding = True
+                output_encoding = obj.output_encoding
+              obj = obj._getCopy(context)
+
+              f = StringIO(exported_property)
+              bta.addObject(f, key, path=path, ext=extension)
+
+              # since we get the obj from context we should
+              # again remove useless properties
+              obj = self.removeProperties(obj, 1, keep_workflow_history = True)
+
+              # in case the related Portal Type does not exist, the object may be broken.
+              # So we cannot delattr, but we can delet the het of its its broken state
+              if isinstance(obj, ERP5BaseBroken):
+                del obj.__Broken_state__[exported_property_type]
+                if reset_output_encoding:
+                  self._objects[obj_key].__Broken_state__['output_encoding'] = output_encoding
+                obj._p_changed = 1
+              else:
+                delattr(obj, exported_property_type)
+                if reset_output_encoding:
+                  obj.output_encoding = output_encoding
+              transaction.savepoint(optimistic=True)
+
+        f = StringIO()
+        XMLExportImport.exportXML(obj._p_jar, obj._p_oid, f)
+        bta.addObject(f, key, path=path)
+        
+      if catalog_method_template_item:
+        # add all datas specific to catalog inside one file
+        xml_data = self.generateXml(key)
+        bta.addObject(xml_data, key + '.catalog_keys', path=path)
+        
+  def _importFile(self, file_name, file_obj, catalog_method_template_item = 0):
+    transactional_variable = getTransactionalVariable()
+    obj_key, file_ext = os.path.splitext(file_name)
+    # id() for installing several bt5 in the same transaction
+    transactional_variable_obj_key = "%s-%s" % (id(self), obj_key)
+    if file_ext != '.xml':
+      # if the document has not been migrated yet (its class is file and
+      # it is not in portal_components) use legacy importer
+      if issubclass(self.__class__, FilesystemDocumentTemplateItem) and file_obj.name.rsplit(os.path.sep, 2)[-2] != 'portal_components':
+        FilesystemDocumentTemplateItem._importFile(self, file_name, file_obj)
+      else:
+        # For ZODB Components: if .xml have been processed before, set the
+        # source code property, otherwise store it in a transactional variable
+        # so that it can be set once the .xml has been processed
+        file_obj_content = file_obj.read()
+        try:
+          obj = self._objects[obj_key]
+        except KeyError:
+          transactional_variable[transactional_variable_obj_key] = file_obj_content
+        else:
+          obj_class_name = obj.__class__.__name__
+          exported_property_type = self.getClassNameAndExportedExtensionDict()[obj_class_name]['exported_property_type']
+          # if we have instance of InitGhostBase, 'unghost' it so we can
+          # identify if it is broken
+          if isinstance(self._objects[obj_key], InitGhostBase):
+            self._objects[obj_key].__class__.loadClass()
+          # in case the Portal Type does not exist, the object may be broken.
+          # So we cannot setattr, but we can change the attribute in its broken state
+          if isinstance(self._objects[obj_key], ERP5BaseBroken):
+            self._objects[obj_key].__Broken_state__[exported_property_type] = file_obj_content
+            self._objects[obj_key]._p_changed = 1
+          else:
+            setattr(self._objects[obj_key], exported_property_type, file_obj_content)
+            self._objects[obj_key] = self.removeProperties(self._objects[obj_key], 1, keep_workflow_history = True)
+    else:
+      connection = self.getConnection(self.aq_parent)
+      __traceback_info__ = 'Importing %s' % file_name
+      if hasattr(cache_database, 'db') and isinstance(file_obj, file):
+        obj = connection.importFile(self._compileXML(file_obj))
+      else:
+        # FIXME: Why not use the importXML function directly? Are there any BT5s
+        # with actual .zexp files on the wild?
+        obj = connection.importFile(file_obj, customImporters=customImporters)
+      self._objects[obj_key] = obj
+
+      if transactional_variable.get(transactional_variable_obj_key, None) != None:
+        obj_class_name = obj.__class__.__name__
+        exported_property_type = self.getClassNameAndExportedExtensionDict()[obj_class_name]['exported_property_type']
+        # if we have instance of InitGhostBase, 'unghost' it so we can
+        # identify if it is broken
+        if isinstance(self._objects[obj_key], InitGhostBase):
+          self._objects[obj_key].__class__.loadClass()
+        # in case the related Portal Type does not exist, the object may be broken.
+        # So we cannot setattr, but we can change the attribute in its broken state
+        if isinstance(self._objects[obj_key], ERP5BaseBroken):
+          self._objects[obj_key].__Broken_state__[exported_property_type] = transactional_variable[transactional_variable_obj_key]
+          self._objects[obj_key]._p_changed = 1
+        else:
+          setattr(self._objects[obj_key], exported_property_type, transactional_variable[transactional_variable_obj_key])
+          self._objects[obj_key] = self.removeProperties(self._objects[obj_key], 1, keep_workflow_history = True)
+
+      # When importing a Business Template, there is no way to determine if it
+      # has been already migrated or not in __init__() when it does not
+      # already exist, therefore BaseTemplateItem.__init__() is called which
+      # does not set _archive with portal_components/ like
+      # ObjectTemplateItem.__init__()
+      # XXX - the above comment is a bit unclear, 
+      # still not sure if this is handled correctly
+      if file_obj.name.rsplit(os.path.sep, 2)[-2] == 'portal_components':
+        self._archive[obj_key] = None
+        try:
+          del self._archive[obj_key[len('portal_components/'):]]
+        except KeyError:
+          pass
+      if catalog_method_template_item:
+        self.removeProperties(obj, 0)
 
   def build_sub_objects(self, context, id_list, url, **kw):
     # XXX duplicates code from build
@@ -804,21 +1097,6 @@ class ObjectTemplateItem(BaseTemplateItem):
         return connection
       obj = obj.aq_parent
 
-  def _importFile(self, file_name, file_obj):
-    # import xml file
-    if not file_name.endswith('.xml'):
-      LOG('Business Template', 0, 'Skipping file "%s"' % (file_name, ))
-      return
-    connection = self.getConnection(self.aq_parent)
-    __traceback_info__ = 'Importing %s' % file_name
-    if hasattr(cache_database, 'db') and isinstance(file_obj, file):
-      obj = connection.importFile(self._compileXML(file_obj))
-    else:
-      # FIXME: Why not use the importXML function directly? Are there any BT5s
-      # with actual .zexp files on the wild?
-      obj = connection.importFile(file_obj, customImporters=customImporters)
-    self._objects[file_name[:-4]] = obj
-
   def preinstall(self, context, installed_item, **kw):
     modified_object_list = {}
     upgrade_list = []
@@ -923,14 +1201,13 @@ class ObjectTemplateItem(BaseTemplateItem):
       objects on which the uid was restored: previous object was deleted,
       hence the "deleted" path, and new object does have the same uid.
     """
-    original_reindex_parameters = context.getPlacelessDefaultReindexParameters()
-    if original_reindex_parameters is None:
-      original_reindex_parameters = {}
-    activate_kw = original_reindex_parameters.get('activate_kw', {}).copy()
-    activate_kw['after_method_id'] = 'unindexObject'
-    context.setPlacelessDefaultReindexParameters(activate_kw=activate_kw, \
-                                                 **original_reindex_parameters)
-    return original_reindex_parameters
+    kw = context.getPlacelessDefaultReindexParameters()
+    if kw is None:
+      kw = {}
+    context.setPlacelessDefaultReindexParameters(**dict(kw,
+      activate_kw=dict(kw.get('activate_kw', ()),
+                       after_method_id='unindexObject')))
+    return kw
 
   def _getObjectKeyList(self):
     # sort to add objects before their subobjects
@@ -1001,6 +1278,10 @@ class ObjectTemplateItem(BaseTemplateItem):
       root_path = "/".join(item_path.split('/')[:2])
       root_document_path = '/%s/%s' % (portal.getId(), root_path)
       recursiveUnindex(catalog, item_path, root_document_path)
+
+  def fixBrokenObject(self, obj):
+    if isinstance(obj, ERP5BaseBroken):
+      self._resetDynamicModules()
 
   def install(self, context, trashbin, **kw):
     self.beforeInstall()
@@ -1088,7 +1369,8 @@ class ObjectTemplateItem(BaseTemplateItem):
             # old widget, thus we can readd them in
             # the right order group
             old_groups[path] = deepcopy(old_obj.groups)
-          subobjects_dict = self._backupObject(action, trashbin,
+          # we force backup since it was an existing object
+          subobjects_dict = self._backupObject('backup', trashbin,
                                                container_path, object_id)
           # in case of portal types, we want to keep some properties
           if interfaces.ITypeProvider.providedBy(container):
@@ -1109,6 +1391,7 @@ class ObjectTemplateItem(BaseTemplateItem):
 
         # install object
         obj = self._objects[path]
+        self.fixBrokenObject(obj)
         # XXX Following code make Python Scripts compile twice, because
         #     _getCopy returns a copy without the result of the compilation.
         #     A solution could be to add a specific _getCopy method to
@@ -1323,7 +1606,10 @@ class ObjectTemplateItem(BaseTemplateItem):
       document_id = document.getId()
       self._backupObject(action, trashbin, path.split('/')[:-1],
                          document_id)
-      parent.manage_delObjects([document_id])
+      try:
+        parent.manage_delObjects([document_id])
+      except BadRequest:
+        pass # removed manually
 
     self.afterInstall()
 
@@ -1744,7 +2030,7 @@ class RegisteredSkinSelectionTemplateItem(BaseTemplateItem):
       xml_data += '\n <skin_folder_selection>'
       xml_data += '\n  <skin_folder>%s</skin_folder>' % key
       xml_data += '\n  <skin_selection>%s</skin_selection>' \
-                      % ','.join(skin_selection_list)
+                      % ','.join(sorted(skin_selection_list))
       xml_data += '\n </skin_folder_selection>'
     xml_data += '\n</registered_skin_selection>'
     return xml_data
@@ -1879,9 +2165,14 @@ class RegisteredVersionPrioritySelectionTemplateItem(BaseTemplateItem):
   def build(self, context, **kw):
     self._fillObjectDictFromArchive()
 
+  def beforeInstall(self):
+    self.__is_new_version_priority_installed = False
+
   def install(self, context, trashbin, **kw):
     if not self._objects:
       return
+
+    self.beforeInstall()
 
     portal = context.getPortalObject()
     registered_tuple_list = []
@@ -1928,8 +2219,17 @@ class RegisteredVersionPrioritySelectionTemplateItem(BaseTemplateItem):
       if not inserted:
         registered_tuple_list.append((new_version, new_priority))
 
+      self.__is_new_version_priority_installed = True
+
     portal.setVersionPriorityList(('%s | %s' % (version, priority)
                                    for version, priority in registered_tuple_list))
+
+    self.afterInstall()
+
+  def afterInstall(self):
+    if self.__is_new_version_priority_installed:
+      self.portal_components.reset(force=True,
+                                   reset_portal_type_at_transaction_boundary=True)
 
   def preinstall(self, context, installed_item, **kw):
     modified_object_list = {}
@@ -1975,7 +2275,7 @@ class RegisteredVersionPrioritySelectionTemplateItem(BaseTemplateItem):
 class WorkflowTemplateItem(ObjectTemplateItem):
 
   def __init__(self, id_list, tool_id='portal_workflow', **kw):
-    return ObjectTemplateItem.__init__(self, id_list, tool_id=tool_id, **kw)
+    ObjectTemplateItem.__init__(self, id_list, tool_id=tool_id, **kw)
 
   # When the root object of a workflow is modified, the entire workflow is
   # recreated: all subobjects are discarded and must be reinstalled.
@@ -2148,7 +2448,6 @@ class PortalTypeTemplateItem(ObjectTemplateItem):
               self._workflow_chain_archive[portal_type]
     context.portal_workflow.manage_changeWorkflows(default_chain,
                                                    props=chain_dict)
-
   # XXX : this method is kept temporarily, but can be removed once all bt5 are
   # re-exported with separated workflow-chain information
   def _importFile(self, file_name, file):
@@ -2221,6 +2520,16 @@ class PortalTypeWorkflowChainTemplateItem(BaseTemplateItem):
   def export(self, context, bta, **kw):
     if not self._objects:
       return
+    # 'portal_type_workflow_chain/' is added in _importFile
+    # and if the template is not built,
+    # it should be removed here from the key
+    new_objects = PersistentMapping()
+    for key, value in self._objects.iteritems():
+      new_key = deepcopy(key)
+      if 'portal_type_workflow_chain/' in key:
+        new_key = new_key.replace('portal_type_workflow_chain/', '')
+      new_objects[new_key] = value
+    self._objects = new_objects
     # export workflow chain
     xml_data = self.generateXml()
     bta.addObject(xml_data, name='workflow_chain_type',
@@ -2677,23 +2986,7 @@ class CatalogMethodTemplateItem(ObjectTemplateItem):
     return modified_object_dict
 
   def export(self, context, bta, **kw):
-    catalog = _getCatalogValue(self)
-    if catalog is None:
-      LOG('BusinessTemplate, export', 0, 'no SQL catalog was available')
-      return
-
-    if len(self._objects.keys()) == 0:
-      return
-    path = self.__class__.__name__
-    for key in self._objects.keys():
-      obj = self._objects[key]
-      # export object in xml
-      f=StringIO()
-      XMLExportImport.exportXML(obj._p_jar, obj._p_oid, f)
-      bta.addObject(f, key, path=path)
-      # add all datas specific to catalog inside one file
-      xml_data = self.generateXml(key)
-      bta.addObject(xml_data, key + '.catalog_keys', path=path)
+    ObjectTemplateItem.export(self, context, bta, catalog_method_template_item=1)
 
   def install(self, context, trashbin, **kw):
     ObjectTemplateItem.install(self, context, trashbin, **kw)
@@ -2850,14 +3143,9 @@ class CatalogMethodTemplateItem(ObjectTemplateItem):
         else:
           # new style key
           self._method_properties.setdefault(id, PersistentMapping())[key] = 1
-    elif file_name.endswith('.xml'):
-      # just import xml object
-      connection = self.getConnection(self.aq_parent)
-      obj = connection.importFile(file, customImporters=customImporters)
-      self.removeProperties(obj, 0)
-      self._objects[file_name[:-4]] = obj
     else:
-      LOG('Business Template', 0, 'Skipping file "%s"' % (file_name, ))
+      ObjectTemplateItem._importFile(self, file_name, file, catalog_method_template_item=1)
+
 
 class ActionTemplateItem(ObjectTemplateItem):
 
@@ -3507,21 +3795,6 @@ class FilesystemDocumentTemplateItem(BaseTemplateItem):
               {self._getKey(path) : ['Removed', self.__class__.__name__[:-12]]})
     return modified_object_list
 
-  def _resetDynamicModules(self):
-    # before any import, flush all ZODB caches to force a DB reload
-    # otherwise we could have objects trying to get commited while
-    # holding reference to a class that is no longer the same one as
-    # the class in its import location and pickle doesn't tolerate it.
-    # First we do a savepoint to dump dirty objects to temporary
-    # storage, so that all references to them can be freed.
-    transaction.savepoint(optimistic=True)
-    # Then we need to flush from all caches, not only the one from this
-    # connection
-    portal = self.getPortalObject()
-    portal._p_jar.db().cacheMinimize()
-    synchronizeDynamicModules(portal, force=True)
-    gc.collect()
-
   def install(self, context, trashbin, **kw):
     update_dict = kw.get('object_to_update')
     force = kw.get('force')
@@ -3946,74 +4219,14 @@ class DocumentTemplateItem(FilesystemToZodbTemplateItem):
       wf_history.pop('comment', None)
 
       obj.workflow_history[wf_id] = WorkflowHistoryList([wf_history])
-
+  
+  # XXX temporary should be eliminated from here
   def _importFile(self, file_name, file_obj):
-    """
-    This will be called once for non-migrated Document and twice for ZODB
-    Components (for .xml (metadata) and .py (source code)). This code MUST
-    consider both bt5 folder (everything is on the FS) and tarball (where in
-    case of ZODB Components, .xml may have been processed before .py and vice
-    versa.
-    """
-    tv = getTransactionalVariable()
-    obj_key, file_ext = os.path.splitext(file_name)
-    # id() for installing several bt5 in the same transaction
-    tv_obj_key = "%s-%s" % (id(self), obj_key)
-    if file_ext == '.py':
-      # If this Document has not been migrated yet (eg not matching
-      # "portal_components/XXX.py"), use legacy importer
-      if file_obj.name.rsplit(os.path.sep, 2)[-2] != 'portal_components':
-        FilesystemDocumentTemplateItem._importFile(self, file_name, file_obj)
-      # For ZODB Components: if .xml have been processed before, set the
-      # source code property, otherwise store it in a transactional variable
-      # so that it can be set once the .xml has been processed
-      else:
-        text_content = file_obj.read()
-        try:
-          obj = self._objects[obj_key]
-        except KeyError:
-          tv[tv_obj_key] = text_content
-        else:
-          obj.text_content = text_content
-    elif file_ext == '.xml':
-      ObjectTemplateItem._importFile(self, file_name, file_obj)
-      self._objects[obj_key].text_content = tv.get(tv_obj_key, None)
-
-      # When importing a Business Template, there is no way to determine if it
-      # has been already migrated or not in __init__() when it does not
-      # already exist, therefore BaseTemplateItem.__init__() is called which
-      # does not set _archive with portal_components/ like
-      # ObjectTemplateItem.__init__()
-      self._archive[obj_key] = None
-      del self._archive[obj_key[len('portal_components/'):]]
-    else:
-      LOG('Business Template', 0, 'Skipping file "%s"' % file_name)
-
+    ObjectTemplateItem._importFile(self, file_name, file_obj)
+  
+  # XXX temporary should be eliminated from here
   def export(self, context, bta, **kw):
-    """
-    Export a Document as two files for ZODB Components, one for metadata
-    (.xml) and the other for the Python source code (.py)
-    """
-    path = self.__class__.__name__ + '/'
-    for key, obj in self._objects.iteritems():
-      # Back compatibility with filesystem Documents
-      if isinstance(obj, str):
-        if not key.startswith(path):
-          key = path + key
-        bta.addObject(obj, name=key, ext='.py')
-      else:
-        obj = obj._getCopy(context)
-
-        f = StringIO(obj.text_content)
-        bta.addObject(f, key, path=path, ext='.py')
-
-        del obj.text_content
-        transaction.savepoint(optimistic=True)
-
-        # export object in xml
-        f = StringIO()
-        XMLExportImport.exportXML(obj._p_jar, obj._p_oid, f)
-        bta.addObject(f, key, path=path)
+    ObjectTemplateItem.export(self, context, bta, **kw)  
 
   def getTemplateIdList(self):
     """
@@ -4211,7 +4424,7 @@ class CatalogKeyTemplateItemBase(BaseTemplateItem):
       elif not self.is_bt_for_diff:
         raise NotFound, '%s %r not found in catalog' %(self.key_title, key)
     if len(key_list) > 0:
-      self._objects['%s/%s' % (self.__class__.__name__, self.key_list_title)] = key_list
+      self._objects[self.key_list_title] = key_list
 
   def _importFile(self, file_name, file):
     if not file_name.endswith('.xml'):
@@ -4278,9 +4491,10 @@ class CatalogKeyTemplateItemBase(BaseTemplateItem):
   def export(self, context, bta, **kw):
     if len(self._objects.keys()) == 0:
       return
-    for path in self._objects.keys():
-      xml_data = self.generateXml(path=path)
-      bta.addObject(xml_data, name=path)
+    for name in self._objects.keys():
+      path = self.__class__.__name__
+      xml_data = self.generateXml(path=name)
+      bta.addObject(xml_data, name=name, path=path)
 
 class CatalogUniqueKeyTemplateItemBase(CatalogKeyTemplateItemBase):
   # like CatalogKeyTemplateItemBase, but for keys which use
@@ -4528,7 +4742,7 @@ class MessageTranslationTemplateItem(BaseTemplateItem):
     name = posixpath.split(file_name)[1]
     if name == 'translation.po':
       text = file.read()
-      self._objects[file_name[:-3]] = text
+      self._objects[file_name[:-len(name)]] = text
     elif name == 'language.xml':
       xml = parse(file)
       name = xml.find('name').text
@@ -4775,7 +4989,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       XMLObject.__init__(self, *args, **kw)
       self._clean()
 
-    security.declareProtected(Permissions.ManagePortal, 'manage_afterAdd')
+    security.declarePrivate('manage_afterAdd')
     def manage_afterAdd(self, item, container):
       """
         This is called when a new business template is added or imported.
@@ -4790,6 +5004,8 @@ Business Template is a set of definitions, such as skins, portal types and categ
           self.workflow_history[
                             'business_template_installation_workflow'] = None
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getShortRevision')
     def getShortRevision(self):
       """Returned a shortened revision"""
       r = self.getRevision()
@@ -4948,12 +5164,14 @@ Business Template is a set of definitions, such as skins, portal types and categ
       return self.portal_templates.publish(self, url, username=username,
                                            password=password)
 
+    security.declareProtected(Permissions.ManagePortal, 'update')
     def update(self):
       """
         Update template: download new template definition
       """
       return self.portal_templates.update(self)
 
+    security.declareProtected(Permissions.ManagePortal, 'isCatalogUpdatable')
     def isCatalogUpdatable(self):
       """
       Return if catalog will be updated or not by business template installation
@@ -4971,6 +5189,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
               return True
       return False
 
+    security.declareProtected(Permissions.ManagePortal, 'preinstall')
     def preinstall(self, check_dependencies=1, **kw):
       """
         Return the list of modified/new/removed object between a Business Template
@@ -5029,7 +5248,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       return modified_object_list
 
     def _install(self, force=1, object_to_update=None, update_translation=0,
-                 update_catalog=False, **kw):
+                 update_catalog=False, check_dependencies=True, **kw):
       """
         Install a new Business Template, if force, all will be upgraded or installed
         otherwise depends of dict object_to_update
@@ -5052,7 +5271,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       if trash_tool is None:
         raise AttributeError, 'Trash Tool is not installed'
 
-      if not force:
+      if not force and check_dependencies:
         self.checkDependencies()
 
       # always created a trash bin because we may to save object already present
@@ -5229,6 +5448,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
         result = tuple(result)
       return result
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateCatalogMethodIdList')
     def getTemplateCatalogMethodIdList(self):
       """
       We have to set this method because we want an
@@ -5236,6 +5456,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_catalog_method_id')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateBaseCategoryList')
     def getTemplateBaseCategoryList(self):
       """
       We have to set this method because we want an
@@ -5243,6 +5464,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_base_category')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateWorkflowIdList')
     def getTemplateWorkflowIdList(self):
       """
       We have to set this method because we want an
@@ -5250,6 +5472,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_workflow_id')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeIdList')
     def getTemplatePortalTypeIdList(self):
       """
       We have to set this method because we want an
@@ -5257,6 +5480,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_id')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeWorkflowChainList')
     def getTemplatePortalTypeWorkflowChainList(self):
       """
       We have to set this method because we want an
@@ -5264,6 +5488,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_workflow_chain')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePathList')
     def getTemplatePathList(self):
       """
       We have to set this method because we want an
@@ -5271,6 +5496,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_path')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePreferenceList')
     def getTemplatePreferenceList(self):
       """
       We have to set this method because we want an
@@ -5278,6 +5504,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_preference')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeAllowedContentTypeList')
     def getTemplatePortalTypeAllowedContentTypeList(self):
       """
       We have to set this method because we want an
@@ -5285,6 +5512,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_allowed_content_type')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeHiddenContentTypeList')
     def getTemplatePortalTypeHiddenContentTypeList(self):
       """
       We have to set this method because we want an
@@ -5292,6 +5520,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_hidden_content_type')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypePropertySheetList')
     def getTemplatePortalTypePropertySheetList(self):
       """
       We have to set this method because we want an
@@ -5299,6 +5528,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_property_sheet')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeBaseCategoryList')
     def getTemplatePortalTypeBaseCategoryList(self):
       """
       We have to set this method because we want an
@@ -5306,6 +5536,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_base_category')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateActionPathList')
     def getTemplateActionPathList(self):
       """
       We have to set this method because we want an
@@ -5313,6 +5544,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_action_path')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplatePortalTypeRoleList')
     def getTemplatePortalTypeRoleList(self):
       """
       We have to set this method because we want an
@@ -5320,6 +5552,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_portal_type_role')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateLocalRoleList')
     def getTemplateLocalRoleList(self):
       """
       We have to set this method because we want an
@@ -5327,6 +5560,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_local_role')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateSkinIdList')
     def getTemplateSkinIdList(self):
       """
       We have to set this method because we want an
@@ -5334,6 +5568,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_skin_id')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateRegisteredSkinSelectionList')
     def getTemplateRegisteredSkinSelectionList(self):
       """
       We have to set this method because we want an
@@ -5341,6 +5576,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_registered_skin_selection')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateRegisteredVersionPrioritySelectionList')
     def getTemplateRegisteredVersionPrioritySelectionList(self):
       """
       We have to set this method because we want an
@@ -5353,6 +5589,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       except AttributeError:
         return ()
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateModuleIdList')
     def getTemplateModuleIdList(self):
       """
       We have to set this method because we want an
@@ -5360,6 +5597,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_module_id')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateMessageTranslationList')
     def getTemplateMessageTranslationList(self):
       """
       We have to set this method because we want an
@@ -5367,6 +5605,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return self._getOrderedList('template_message_translation')
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getTemplateToolIdList')
     def getTemplateToolIdList(self):
       """
       We have to set this method because we want an
@@ -5385,18 +5624,21 @@ Business Template is a set of definitions, such as skins, portal types and categ
           return True
       return False
 
+    security.declarePrivate('isKeepObject')
     def isKeepObject(self, path):
       """
       Return True if path is included in keep object list.
       """
       return self._isInKeepList(self.getTemplateKeepPathList(), path)
 
+    security.declarePrivate('isKeepWorkflowObject')
     def isKeepWorkflowObject(self, path):
       """
       Return True if path is included in keep workflow object list.
       """
       return self._isInKeepList(self.getTemplateKeepWorkflowPathList(), path)
 
+    security.declarePrivate('isKeepWorkflowObjectLastHistoryOnly')
     def isKeepWorkflowObjectLastHistoryOnly(self, path):
       """
       Return True if path is included in keep workflow last state only list
@@ -5404,12 +5646,14 @@ Business Template is a set of definitions, such as skins, portal types and categ
       return self._isInKeepList(self.getTemplateKeepLastWorkflowHistoryOnlyPathList(),
                                 path)
 
+    security.declarePrivate('getExportPath')
     def getExportPath(self):
       preferences = self.getPortalObject().portal_preferences
       bt_name = self.getTitle()
       from App.config import getConfiguration
       instance_home = getConfiguration().instancehome
       for path in (preferences.getPreferredWorkingCopyList() or ['bt5']):
+        path = os.path.expanduser(path)
         if not os.path.isabs(path):
           path = os.path.join(instance_home, path)
         bt_path = os.path.join(path, bt_name)
@@ -5550,6 +5794,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
 
       self._setRevision(bta.getRevision())
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getItemsList')
     def getItemsList(self):
       """Return list of items in business template
       """
@@ -5560,6 +5805,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
           items_list.extend(item.getKeys())
       return items_list
 
+    security.declareProtected(Permissions.ManagePortal, 'checkDependencies')
     def checkDependencies(self):
       """
        Check if all the dependencies of the business template
@@ -5572,6 +5818,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
           'Impossible to install %s, please install the following dependencies before: %s' \
           %(self.getTitle(), repr(missing_dep_list))
 
+    security.declareProtected(Permissions.ManagePortal, 'getMissingDependencyList')
     def getMissingDependencyList(self):
       """
       Retuns a list of missing dependencies.
@@ -5598,6 +5845,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
             missing_dep_list.append((dependency, version_restriction or ''))
       return [' '.join([y for y in x if y]) for x in missing_dep_list]
 
+    security.declareProtected(Permissions.ManagePortal, 'diffObjectAsHTML')
     def diffObjectAsHTML(self, REQUEST, **kw):
       """
         Convert diff into a HTML format before reply
@@ -5606,6 +5854,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       """
       return DiffFile(self.diffObject(REQUEST, **kw)).toHTML()
 
+    security.declareProtected(Permissions.ManagePortal, 'diffObject')
     def diffObject(self, REQUEST, **kw):
       """
         Make a diff between an object in the Business Template
@@ -5797,6 +6046,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       return diff_msg
 
 
+    security.declareProtected(Permissions.AccessContentsInformation, 'getPortalTypesProperties')
     def getPortalTypesProperties(self, **kw):
       """
       Fill field about properties for each portal type
@@ -5887,6 +6137,8 @@ Business Template is a set of definitions, such as skins, portal types and categ
       self.setTemplateActionPathList(bt_action_list)
 
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'guessPortalTypes')
     def guessPortalTypes(self, **kw):
       """
       This method guesses portal types based on modules define in the Business Template
@@ -5957,6 +6209,7 @@ Business Template is a set of definitions, such as skins, portal types and categ
       setattr(self, 'template_portal_type_id', bt_portal_types_id_list)
       return
 
+    security.declarePrivate('clearPortalTypes')
     def clearPortalTypes(self, **kw):
       """
       clear id list register for portal types

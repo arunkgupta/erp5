@@ -56,9 +56,7 @@
         <item>
             <key> <string>categories</string> </key>
             <value>
-              <tuple>
-                <string>inventory_axis/movement</string>
-              </tuple>
+              <tuple/>
             </value>
         </item>
         <item>

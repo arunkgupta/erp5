@@ -38,6 +38,9 @@ Fax | view
 File | download
 File | update_content_from_url
 File | view
+Geographical Area | view
+Geographical Location | go_to
+Geographical Location | view
 Image | change_function
 Image | download
 Image | fullsize_view
@@ -46,7 +49,6 @@ Image | view
 Invoice Movement Group | view
 Link | view
 Mapped Property | view
-Mirror Movement Group | view
 Monthly Range Movement Group | view
 Nested Line Movement Group | view
 Notification Message Module | view
@@ -77,6 +79,7 @@ Person | person_detailed_report
 Person | terminate_career
 Person | view
 Preference | base_preference
+Previous Causality Movement Group | view
 Property Assignment Movement Group | view
 Property Grouping Movement Group | view
 Property Movement Group | view
@@ -96,4 +99,5 @@ Title Movement Group | view
 Variant Movement Group | view
 Variation Property Movement Group | view
 portal_actions | jump_query
+portal_actions | jump_related_object
 portal_actions | post_query

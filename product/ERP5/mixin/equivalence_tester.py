@@ -28,10 +28,12 @@
 
 import zope.interface
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions, interfaces
 from Products.ERP5Type.DivergenceMessage import DivergenceMessage
 from Products.ERP5Type.Message import Message
 from Products.PythonScripts.standard import html_quote as h
+from zLOG import LOG, WARNING
 
 class EquivalenceTesterMixin:
   """
@@ -46,6 +48,7 @@ class EquivalenceTesterMixin:
   zope.interface.implements(interfaces.IEquivalenceTester,)
 
   # Implementation of IEquivalenceTester
+  security.declarePrivate('testEquivalence')
   def testEquivalence(self, simulation_movement):
     """
     Tests if simulation_movement is divergent. Returns False (0)
@@ -58,6 +61,7 @@ class EquivalenceTesterMixin:
     """
     return self.explain(simulation_movement) is not None
 
+  security.declarePrivate('explain')
   def explain(self, simulation_movement):
     """
     Returns a single message which explain the nature of
@@ -98,6 +102,7 @@ class EquivalenceTesterMixin:
     """
     return movement.getProperty(property)
 
+  security.declarePrivate('generateHashKey')
   def generateHashKey(self, movement):
     """
     Returns a hash key which can be used to optimise the
@@ -116,6 +121,7 @@ class EquivalenceTesterMixin:
       value = self._getTestedPropertyValue(movement, tested_property)
     return '%s/%r' % (tested_property, value)
 
+  security.declarePrivate('compare')
   def compare(self, prevision_movement, decision_movement):
     """
     Returns True if prevision_movement and delivery_movement
@@ -135,6 +141,7 @@ class EquivalenceTesterMixin:
     """
     return (self._compare(prevision_movement, decision_movement) is None)
 
+  security.declarePrivate('update')
   def update(self, prevision_movement, decision_movement):
     """
     Updates decision_movement with properties from
@@ -163,6 +170,8 @@ class EquivalenceTesterMixin:
     decision_movement.edit(
       **self.getUpdatablePropertyDict(prevision_movement, decision_movement))
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getExplanationMessage')
   def getExplanationMessage(self, simulation_movement):
     """
     Returns the HTML message that describes the detail of the
@@ -173,24 +182,27 @@ class EquivalenceTesterMixin:
       return None
     # XXX explanation message should be provided by each class, each
     # portal type or each document.
-    message = '<a href="${decision_url}">${property_name} of ${decision_value} of ${decision_type} ${decision_title}</a> of <a href="${delivery_url}">${delivery_title}</a> is different from <a href="${prevision_url}">planned ${property_name} of ${prevision_value}</a>.'
+    introduction_message = 'On <a href="${decision_url}">${decision_type} ${decision_title}</a> '\
+               'of <a href="${delivery_url}">${delivery_title}</a> : '
     decision_movement = self.getPortalObject().unrestrictedTraverse(
       divergence_message.getProperty('object_relative_url'))
     decision_delivery = decision_movement.getRootDeliveryValue()
-    mapping = {
+    introduction_mapping = {
       'decision_url':decision_movement.absolute_url(),
-      # TODO we need a way to map the property name to the business word,
-      # eg. 'start_date' to 'Delivery Date' for trade etc.
-      'property_name':divergence_message.getProperty('tested_property'),
-      'decision_value':h(divergence_message.getProperty('decision_value')),
-      'decision_type':decision_movement.getPortalType(),
+      'decision_type':decision_movement.getTranslatedPortalType(),
       'decision_title':h(decision_movement.getTitleOrId()),
       'delivery_url':decision_delivery.absolute_url(),
       'delivery_title':h(decision_delivery.getTitleOrId()),
       'prevision_url':'#', # XXX it should be a link to the detailed view.
-      'prevision_value':h(divergence_message.getProperty('prevision_value')),
+                           # For example, we might want to show a partial view of
+                           # the original order associated with partial view of
+                           # related packing list
       }
-    return str(Message(domain='erp5_ui', message=message, mapping=mapping))
+    message = divergence_message.getProperty('message')
+    mapping = dict([(x, h(y)) for (x,y) in divergence_message.getProperty('mapping', {}).items()])
+    return str(Message(domain='erp5_ui', message=introduction_message,
+               mapping=introduction_mapping)) \
+           + str(Message(domain='erp5_ui', message=message, mapping=mapping))
 
   # Placeholder for methods to override
   def _compare(self, prevision_movement, decision_movement):
@@ -200,6 +212,8 @@ class EquivalenceTesterMixin:
     """
     raise NotImplementedError
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getUpdatablePropertyDict')
   def getUpdatablePropertyDict(self, prevision_movement, decision_movement):
     """
     Returns a mapping of properties to update on decision_movement so that next
@@ -212,3 +226,60 @@ class EquivalenceTesterMixin:
     tested_property = self.getTestedProperty()
     return {tested_property: self._getTestedPropertyValue(prevision_movement,
                                                           tested_property)}
+
+  # Temporary compatibility code that will fix existing data.
+  # This Code must be removed in 2 years (end of 2017)
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getTestedProperty')
+  def getTestedProperty(self):
+    """
+    Override getTestedProperty to fix the way it is stored. Some time
+    ago it was multi-valued, which is non-sense we the implementation we
+    have on this equivalence tester.
+    """
+    tested_property = getattr(self, 'tested_property', None)
+    if (getattr(self, '_baseGetTestedPropertyList', None) is None and
+        isinstance(tested_property, tuple)):
+      if len(tested_property) == 1:
+        new_value = tested_property[0]
+      else:
+        new_value = None
+
+      setattr(self, 'tested_property', new_value)
+      LOG("equivalence_tester", WARNING,
+          "%s: Migrated tested_property: %r => %r" % (self.getRelativeUrl(),
+                                                      tested_property,
+                                                      new_value))
+
+    return self._baseGetTestedProperty()
+
+  def getTestedPropertyList(self):
+    if getattr(self, '_baseGetTestedPropertyList', None) is None:
+      return [self.getTestedProperty()]
+
+    return self._baseGetTestedPropertyList()
+
+  def getTestedPropertyTitle(self):
+    tested_property_title = getattr(self, 'tested_property_title', None)
+    if (getattr(self, '_baseGetTestedPropertyTitleList', None) is None and
+        isinstance(tested_property_title, tuple)):
+      if len(tested_property_title) == 1:
+        new_value = tested_property_title[0]
+      else:
+        new_value = None
+
+      setattr(self, 'tested_property_title', new_value)
+      LOG("equivalence_tester", WARNING,
+          "%s: Migrated tested_property_title: %r => %r" % (self.getRelativeUrl(),
+                                                            tested_property_title,
+                                                            new_value))
+
+    return self._baseGetTestedPropertyTitle()
+
+  def getTestedPropertyTitleList(self):
+    if getattr(self, '_baseGetTestedPropertyTitleList', None) is None:
+      return [self.getTestedPropertyTitle()]
+
+    return self._baseGetTestedPropertyTitleList()
+
+InitializeClass(EquivalenceTesterMixin)

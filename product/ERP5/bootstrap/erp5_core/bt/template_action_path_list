@@ -1,6 +1,7 @@
 Acquired Property | view
 Action Information | view
 Active Process | view
+Activity Tool | view
 Activity Tool | watch_report
 Alarm Tool | alarm_report
 Alarm Tool | view
@@ -22,6 +23,7 @@ Attribute Unicity Constraint | view
 Base Category | view
 Base Domain | view
 Base Type | action_view
+Base Type | jump_property_sheets
 Base Type | role_view
 Base Type | translation_view
 Base Type | update_local_roles
@@ -32,7 +34,6 @@ Business Template | guess_portal_types
 Business Template | jump_trash_bin
 Business Template | migrate_component_from_filesystem
 Business Template | save
-Business Template | unittest_run
 Business Template | view
 Business Template | view_catalog
 Business Template | view_detail
@@ -79,10 +80,12 @@ Id Tool | view
 Memcached Plugin | view
 Memcached Tool | view
 Predicate | view
+Preference Tool Type | jump_property_sheets
 Preference Tool Type | view
 Preference Tool | advanced
 Preference Tool | view
 Preference Type | action_view
+Preference Type | jump_property_sheets
 Preference Type | role_view
 Preference Type | translation_view
 Preference Type | update_local_roles

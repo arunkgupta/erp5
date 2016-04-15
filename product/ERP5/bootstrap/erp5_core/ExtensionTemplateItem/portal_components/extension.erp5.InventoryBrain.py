@@ -52,33 +52,29 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
     Lists each variation
   """
   # Stock management
-  def getInventory(self, **kw):
-    simulation_tool = getToolByName(self, 'portal_simulation')
-    return simulation_tool.getInventory(
-                   node_uid=self.node_uid,
-                   variation_text=self.variation_text,
-                   resource_uid=self.resource_uid, **kw)
+  def _callSimulationTool(self, method_id, ignore_unknown_columns=True, **kw):
+    return getattr(
+      self.getPortalObject().portal_simulation,
+      method_id,
+    )(
+      ignore_unknown_columns=ignore_unknown_columns,
+      node_uid=self.node_uid,
+      variation_text=self.variation_text,
+      resource_uid=self.resource_uid,
+      **kw
+    )
 
-  def getCurrentInventory(self,**kw):
-    simulation_tool = getToolByName(self, 'portal_simulation')
-    return simulation_tool.getCurrentInventory(
-                             node_uid=self.node_uid,
-                             variation_text=self.variation_text,
-                             resource_uid=self.resource_uid, **kw)
+  def getInventory(self, **kw):
+    return self._callSimulationTool('getInventory', **kw)
+
+  def getCurrentInventory(self, **kw):
+    return self._callSimulationTool('getCurrentInventory', **kw)
 
   def getFutureInventory(self,**kw):
-    simulation_tool = getToolByName(self,'portal_simulation')
-    return simulation_tool.getFutureInventory(
-                              node_uid=self.node_uid,
-                              variation_text=self.variation_text,
-                              resource_uid=self.resource_uid, **kw)
+    return self._callSimulationTool('getFutureInventory', **kw)
 
   def getAvailableInventory(self,**kw):
-    simulation_tool = getToolByName(self,'portal_simulation')
-    return simulation_tool.getAvailableInventory(
-                             node_uid=self.node_uid,
-                             variation_text=self.variation_text,
-                             resource_uid=self.resource_uid, **kw)
+    return self._callSimulationTool('getAvailableInventory', **kw)
 
   def getQuantityUnit(self, **kw):
     resource = self.getResourceValue()
@@ -92,7 +88,7 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
       return uid_cache[uid]
     except KeyError:
       result_list = self.portal_catalog.unrestrictedSearchResults(uid=uid, limit=1,
-        select_dict=dict(title=None, relative_url=None))
+        select_dict=dict(title=None, relative_url=None, reference=None))
       result = None
       if result_list:
         result = result_list[0]
@@ -114,6 +110,21 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
       return section.relative_url
   section_relative_url = ComputedAttribute(getSectionRelativeUrl, 1)
 
+  def getMirrorSectionValue(self):
+    return self._getObjectByUid(self.mirror_section_uid)
+
+  def getMirrorSectionTitle(self):
+    mirror_section = self.getMirrorSectionValue()
+    if mirror_section is not None:
+      return mirror_section.title
+  mirror_section_title = ComputedAttribute(getMirrorSectionTitle, 1)
+
+  def getMirrorSectionRelativeUrl(self):
+    mirror_section = self.getMirrorSectionValue()
+    if mirror_section is not None:
+      return mirror_section.relative_url
+  mirror_section_relative_url = ComputedAttribute(getMirrorSectionRelativeUrl, 1)
+
   def getNodeValue(self):
     return self._getObjectByUid(self.node_uid)
 
@@ -122,6 +133,12 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
     if node is not None:
       return node.title
   node_title = ComputedAttribute(getNodeTitle, 1)
+
+  def getNodeTranslatedTitle(self):
+    node = self.getNodeValue()
+    if node is not None:
+      return node.getObject().getTranslatedTitle()
+  node_translated_title = ComputedAttribute(getNodeTranslatedTitle, 1)
 
   def getNodeRelativeUrl(self):
     node = self.getNodeValue()
@@ -138,6 +155,12 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
       return resource.title
   resource_title = ComputedAttribute(getResourceTitle, 1)
 
+  def getResourceTranslatedTitle(self):
+    resource = self.getResourceValue()
+    if resource is not None:
+      return resource.getObject().getTranslatedTitle()
+  resource_translated_title = ComputedAttribute(getResourceTranslatedTitle, 1)
+
   def getResourceRelativeUrl(self):
     resource = self.getResourceValue()
     if resource is not None:
@@ -147,7 +170,7 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
   def getResourceReference(self):
     resource = self.getResourceValue()
     if resource is not None:
-      return resource.getReference()
+      return resource.reference
   resource_reference = ComputedAttribute(getResourceReference, 1)
 
   def getListItemUrl(self, cname_id, selection_index, selection_name):
@@ -174,6 +197,7 @@ class InventoryListBrain(ComputedAttributeGetItemCompatibleMixin):
         'selection_name': selection_name,
         'selection_index': selection_index,
         'domain_name': selection_name,
+        "node_uid": self.node_uid
       }
       # Add parameters to query_kw
       query_kw_update = {}

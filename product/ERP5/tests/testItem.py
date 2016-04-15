@@ -35,7 +35,7 @@ from AccessControl.SecurityManagement import newSecurityManager
 from Products.ERP5Type.tests.Sequence import SequenceList
 from Products.ERP5.tests.testInvoice import TestSaleInvoiceMixin
 from Products.ERP5.tests.utils import newSimulationExpectedFailure
-
+from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod
 
 class TestItemMixin(TestSaleInvoiceMixin):
   item_portal_type = 'Item'
@@ -51,12 +51,6 @@ class TestItemMixin(TestSaleInvoiceMixin):
     """
     return TestSaleInvoiceMixin.getBusinessTemplateList(self) + \
          ('erp5_item',) + ('erp5_trade_proxy_field_legacy',)
-
-  def login(self):
-    uf = self.getPortal().acl_users
-    uf._doAddUser('rc', '', ['Manager', 'Member', 'Assignee'], [])
-    user = uf.getUserById('rc').__of__(uf)
-    newSecurityManager(None, user)
 
   def createOrganisation(self, title=None):
     organisation_portal_type = 'Organisation'
@@ -119,6 +113,7 @@ class TestItemMixin(TestSaleInvoiceMixin):
       title = "PPL%s" % pac_list.getId(),
       start_date = self.datetime + 20,
       stop_date = self.datetime + 10,
+      specialise_value = portal.business_process_module.erp5_default_business_process,
     )
 
     if organisation is not None:
@@ -222,6 +217,7 @@ class TestItemMixin(TestSaleInvoiceMixin):
     self.assertEqual(packing_list.getStartDate(),self.datetime+15)
 
 
+  @UnrestrictedMethod
   def stepModifyOrderLinesQuantity(self,sequence=None, sequence_list=None, **kw):
     """
       modify order line quantities
@@ -231,6 +227,7 @@ class TestItemMixin(TestSaleInvoiceMixin):
     for order_line in order_line_list:
       order_line.edit(quantity=self.default_quantity-1)
 
+  @UnrestrictedMethod
   def stepModifyOneOrderLineStartDate(self,sequence=None, sequence_list=None, **kw):
     """
       modify order line start date
@@ -242,6 +239,7 @@ class TestItemMixin(TestSaleInvoiceMixin):
     order_line_list[-1].edit(start_date=self.datetime+15)
 
 
+  @UnrestrictedMethod
   def stepModifyOrderLinesDate(self,sequence=None, sequence_list=None, **kw):
     """
       modify order line date
@@ -907,7 +905,6 @@ class TestItem(TestItemMixin, ERP5TypeTestCase):
     self.assertEqual(12, packing_list_line.getQuantity())
 
 
-  @newSimulationExpectedFailure
   def test_select_item_dialog_variation(self):
     organisation = self.createOrganisation(title='Organisation IV')
     resource = self.createVariatedResource()
@@ -983,6 +980,7 @@ class TestItemScripts(ERP5TypeTestCase):
   def getBusinessTemplateList(self):
     return ('erp5_base', 'erp5_pdm', 'erp5_simulation', 'erp5_trade',
             'erp5_item', 'erp5_configurator_standard_solver',
+            'erp5_configurator_standard_trade_template',
             'erp5_simulation_test')
 
   def afterSetUp(self):
@@ -1042,6 +1040,7 @@ class TestItemScripts(ERP5TypeTestCase):
                   source_section_value=self.mirror_section,
                   destination_value=self.node,
                   destination_section_value=self.section,
+                  specialise_value=self.portal.business_process_module.erp5_default_business_process,
                   start_date=DateTime() - 1,)
     line = packing_list.newContent(
                   portal_type='Sale Packing List Line',
@@ -1054,7 +1053,6 @@ class TestItemScripts(ERP5TypeTestCase):
     return line
 
   # with line
-  @newSimulationExpectedFailure
   def test_Item_getResourceValue(self):
     self.assertEqual(None, self.item.Item_getResourceValue())
     line = self._makeSalePackingListLine()
@@ -1062,7 +1060,6 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual(None, self.item.Item_getResourceValue(
                                 at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getResourceTitle(self):
     self.assertEqual(None, self.item.Item_getResourceTitle())
     line = self._makeSalePackingListLine()
@@ -1070,7 +1067,6 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual(None, self.item.Item_getResourceTitle(
                                 at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getCurrentOwnerValue(self):
     self.assertEqual(None, self.item.Item_getCurrentOwnerValue())
     line = self._makeSalePackingListLine()
@@ -1078,7 +1074,6 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual(None,
         self.item.Item_getCurrentOwnerValue(at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getCurrentOwnerTitle(self):
     self.assertEqual(None, self.item.Item_getCurrentOwnerTitle())
     line = self._makeSalePackingListLine()
@@ -1086,7 +1081,6 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual(None,
         self.item.Item_getCurrentOwnerTitle(at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getCurrentSiteValue(self):
     self.assertEqual(None, self.item.Item_getCurrentSiteValue())
     line = self._makeSalePackingListLine()
@@ -1094,13 +1088,62 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual(None, self.item.Item_getCurrentSiteValue(
                                             at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getCurrentSiteTitle(self):
     self.assertEqual(None, self.item.Item_getCurrentSiteTitle())
     line = self._makeSalePackingListLine()
     self.assertEqual('Node', self.item.Item_getCurrentSiteTitle())
     self.assertEqual(None,
           self.item.Item_getCurrentSiteTitle(at_date=DateTime() - 2))
+
+  def test_item_current_location_and_transit_movement(self):
+    # a started packing list is still in transit, so we do not know its
+    # current location until it is delivered.
+    # https://lab.nexedi.com/nexedi/erp5/merge_requests/70
+
+    implicit_movement = self.portal.implicit_item_movement_module.newContent(
+      portal_type='Implicit Item Movement',
+      destination_value=self.mirror_node,
+      destination_section_value=self.mirror_section,
+      stop_date=DateTime() - 2,
+      aggregate_value=self.item,
+    )
+    implicit_movement.deliver()
+
+    packing_list = self.portal.sale_packing_list_module.newContent(
+      portal_type='Sale Packing List',
+      source_value=self.mirror_node,
+      source_section_value=self.mirror_section,
+      destination_value=self.node,
+      destination_section_value=self.section,
+      specialise_value=self.portal.business_process_module.erp5_default_business_process,
+      start_date=DateTime() - 1,)
+    line = packing_list.newContent(
+      portal_type='Sale Packing List Line',
+      quantity=1,
+      resource_value=self.product,
+      aggregate_value=self.item,)
+    packing_list.confirm()
+    self.tic()
+    self.assertEqual(self.mirror_node, self.item.Item_getCurrentSiteValue())
+    self.assertEqual('Mirror Node', self.item.Item_getCurrentSiteTitle())
+    self.assertEqual(self.mirror_section, self.item.Item_getCurrentOwnerValue())
+    self.assertEqual('Mirror Section', self.item.Item_getCurrentOwnerTitle())
+
+    packing_list.start()
+    self.tic()
+    # When movement is started, the item is still moving so we do not know it's location / ownership.
+    # In this case we just return None.
+    self.assertEqual(None, self.item.Item_getCurrentSiteValue())
+    self.assertEqual(None, self.item.Item_getCurrentSiteTitle())
+    self.assertEqual(None, self.item.Item_getCurrentOwnerValue())
+    self.assertEqual(None, self.item.Item_getCurrentOwnerTitle())
+
+    packing_list.stop()
+    self.tic()
+    self.assertEqual(self.node, self.item.Item_getCurrentSiteValue())
+    self.assertEqual('Node', self.item.Item_getCurrentSiteTitle())
+    self.assertEqual(self.section, self.item.Item_getCurrentOwnerValue())
+    self.assertEqual('Section', self.item.Item_getCurrentOwnerTitle())
 
   # with cells
   @reindex
@@ -1111,6 +1154,7 @@ class TestItemScripts(ERP5TypeTestCase):
                   source_section_value=self.mirror_section,
                   destination_value=self.node,
                   destination_section_value=self.section,
+                  specialise_value=self.portal.business_process_module.erp5_default_business_process,
                   start_date=DateTime() - 1,)
     line = packing_list.newContent(
                   portal_type='Sale Packing List Line',
@@ -1127,7 +1171,6 @@ class TestItemScripts(ERP5TypeTestCase):
     packing_list.deliver()
     return cell
 
-  @newSimulationExpectedFailure
   def test_Item_getVariationCategoryList(self):
     self.assertEqual([], self.item.Item_getVariationCategoryList())
     self._makeSalePackingListCellWithVariation()
@@ -1135,7 +1178,6 @@ class TestItemScripts(ERP5TypeTestCase):
     self.assertEqual([],
         self.item.Item_getVariationCategoryList(at_date=DateTime() - 2))
 
-  @newSimulationExpectedFailure
   def test_Item_getVariationRangeCategoryItemList(self):
     self.assertEqual([], self.item.Item_getVariationRangeCategoryItemList())
     self._makeSalePackingListCellWithVariation()

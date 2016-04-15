@@ -38,6 +38,7 @@ from AccessControl.SecurityManagement import newSecurityManager
 from DateTime import DateTime
 from zLOG import LOG
 from Products.ERP5Type.tests.Sequence import SequenceList
+from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod
 from Products.CMFCore.utils import getToolByName
 
 class TestOrderMixin(SubcontentReindexingWrapper):
@@ -69,12 +70,6 @@ class TestOrderMixin(SubcontentReindexingWrapper):
             'erp5_configurator_standard_trade_template',
             'erp5_simulation_test', 'erp5_administration')
 
-  def login(self, quiet=0, run=1):
-    uf = self.getPortal().acl_users
-    uf._doAddUser('rc', '', ['Manager', 'Member', 'Assignee'], [])
-    user = uf.getUserById('rc').__of__(uf)
-    newSecurityManager(None, user)
-
   def setUpPreferences(self):
     #create apparel variation preferences
     portal_preferences = self.getPreferenceTool()
@@ -95,13 +90,21 @@ class TestOrderMixin(SubcontentReindexingWrapper):
       preference.enable()
     self.tic()
 
+  def createUser(self, name, role_list):
+    user_folder = self.getPortal().acl_users
+    user_folder._doAddUser(name, 'password', role_list, [])
+
   def afterSetUp(self):
     # XXX-Leo: cannot call super here, because other classes call
     # SuperClass.afterSetUp(self) directly... this needs to be cleaned
     # up, including consolidating all conflicting definitions of
     # .createCategories()
     #super(TestOrderMixin, self).afterSetUp()
-    self.login()
+    self.createUser('test_user',
+                    ['Assignee', 'Assignor', 'Member',
+                     'Associate', 'Auditor', 'Author'])
+    self.createUser('manager', ['Manager'])
+    self.login('manager')
     self.category_tool = self.getCategoryTool()
     portal_catalog = self.getCatalogTool()
     #portal_catalog.manage_catalogClear()
@@ -113,6 +116,7 @@ class TestOrderMixin(SubcontentReindexingWrapper):
     # 1. All calculations are done relative to the same time
     # 2. We don't get random failures when tests run close to midnight
     self.pinDateTime(self.datetime)
+    self.login('test_user')
 
   def beforeTearDown(self):
     self.unpinDateTime()
@@ -231,6 +235,7 @@ class TestOrderMixin(SubcontentReindexingWrapper):
     resource_list.append(resource)
     sequence.edit( resource_list = resource_list )
 
+  @UnrestrictedMethod
   def stepCreateVariatedMultipleQuantityUnitResource(self, sequence=None, sequence_list=None, **kw):
     """
     Create a resource with variation and multiple quantity units
@@ -565,19 +570,6 @@ class TestOrderMixin(SubcontentReindexingWrapper):
     vrcl = order_line.getVariationRangeCategoryList()
     vrcil = order_line.getVariationRangeCategoryItemList()
     self.failIfDifferentSet(vrcl, map(lambda x: x[1], vrcil))
-
-  def stepCheckOrderLineVCIL(self, sequence=None, sequence_list=None, **kw):
-    """
-      Check if getVariationCategoryItemList returns the good result.
-      Does not test display...
-      Item are left display.
-    """
-    order_line = sequence.get('order_line')
-    vcl = order_line.getVariationCategoryList()
-    vcil = order_line.getVariationCategoryItemList()
-    LOG('stepCheckOrderLineVCIL', 0, 'vcl: %s\n' % str(vcl))
-    LOG('stepCheckOrderLineVCIL', 0, 'vcil: %s\n' % str(vcil))
-    self.failIfDifferentSet(vcl, map(lambda x: x[1], vcil))
 
   def stepSetOrderLineDefaultValues(self, sequence=None, \
                                     sequence_list=None, **kw):
@@ -1356,35 +1348,79 @@ class TestOrder(TestOrderMixin, ERP5TypeTestCase):
     sequence_list.addSequenceString(sequence_string)
     sequence_list.play(self)
 
-  def test_03_OrderLine_getVariationCategoryList(self, quiet=0,
-                                                 run=run_all_test):
-    """
-      Test order line getVariationCategoryList.
-      Not yet tested....
-    """
-    if not run: return
-    pass
+  def test_OrderLine_getVariationCategoryList(self):
+    order_module = self.portal.getDefaultModule(portal_type=self.order_portal_type)
+    order = order_module.newContent(portal_type=self.order_portal_type,
+                                    specialise=self.business_process)
 
-  def test_04_OrderLine_getVariationCategoryItemList(self, quiet=0,
-                                                     run=run_all_test):
-    """
-      Test order line getVariationCategoryItemList.
-    """
-    if not run: return
-    sequence_list = SequenceList()
-    # Test when resource has variation
-    sequence_string = 'stepCreateOrder \
-                       stepCreateOrderLine \
-                       stepCheckOrderLineVCIL \
-                       stepCreateVariatedResource \
-                       stepTic \
-                       stepSetOrderLineResource \
-                       stepSetOrderLineHalfVCL \
-                       stepTic \
-                       stepCheckOrderLineVCIL \
-                       '
-    sequence_list.addSequenceString(sequence_string)
-    sequence_list.play(self)
+    resource_module = self.portal.getDefaultModule(self.resource_portal_type)
+    resource = resource_module.newContent(portal_type=self.resource_portal_type)
+    resource.edit(
+      industrial_phase_list=["phase1", "phase2"],
+      size_list=['Baby', 'Woman']
+    )
+    order_line = order.newContent(
+        portal_type=self.order_line_portal_type,
+        resource_value=resource)
+
+    order_line.setVariationCategoryList(['size/Baby'])
+    self.assertEqual(['size/Baby'], order_line.getVariationCategoryList())
+    self.assertEqual(sorted(['size']),
+        sorted(order_line.getVariationBaseCategoryList()))
+
+    order_line.setVariationCategoryList(['size/Baby', 'industrial_phase/phase1'])
+    self.assertEqual(sorted(['size/Baby', 'industrial_phase/phase1']),
+        sorted(order_line.getVariationCategoryList()))
+    self.assertEqual(sorted(['industrial_phase', 'size']),
+        sorted(order_line.getVariationBaseCategoryList()))
+
+    self.assertEqual(['size/Baby'],
+        order_line.getVariationCategoryList(base_category_list=('size',)))
+    self.assertEqual([],
+        order_line.getVariationCategoryList(base_category_list=('other',)))
+
+
+  def test_OrderLine_getVariationCategoryItemList(self):
+    order_module = self.portal.getDefaultModule(portal_type=self.order_portal_type)
+    order = order_module.newContent(portal_type=self.order_portal_type,
+                                    specialise=self.business_process)
+
+    resource_module = self.portal.getDefaultModule(self.resource_portal_type)
+    resource = resource_module.newContent(portal_type=self.resource_portal_type)
+    resource.edit(
+      industrial_phase_list=["phase1", "phase2"],
+      size_list=['Baby', 'Woman']
+    )
+    self.assertEqual(sorted([
+        ['Industrial Phase/phase1', 'industrial_phase/phase1'],
+        ['Industrial Phase/phase2', 'industrial_phase/phase2'],
+        ['Size/Baby', 'size/Baby'],
+        ['Size/Woman', 'size/Woman'], ]),
+        sorted(resource.getVariationCategoryItemList()))
+
+    order_line = order.newContent(
+        portal_type=self.order_line_portal_type,
+        resource_value=resource)
+
+    order_line.setVariationCategoryList(['size/Baby'])
+    self.assertEqual(
+        [['Baby', 'size/Baby']],
+        order_line.getVariationCategoryItemList())
+
+    self.assertEqual(sorted(['size']),
+        sorted(order_line.getVariationBaseCategoryList()))
+
+    order_line.setVariationCategoryList(['size/Baby', 'industrial_phase/phase1'])
+    self.assertEqual(sorted([
+        ['Baby', 'size/Baby'],
+        ['phase1', 'industrial_phase/phase1'], ]),
+        sorted(order_line.getVariationCategoryItemList()))
+    self.assertEqual(sorted(['size', 'industrial_phase']),
+        sorted(order_line.getVariationBaseCategoryList()))
+    self.assertEqual([['Baby', 'size/Baby']],
+        order_line.getVariationCategoryItemList(base_category_list=('size',)))
+    self.assertEqual([],
+        order_line.getVariationCategoryItemList(base_category_list=('other',)))
 
   def test_05_OrderLine_Matrix(self, quiet=0, run=run_all_test):
     """
@@ -2745,7 +2781,7 @@ class TestOrder(TestOrderMixin, ERP5TypeTestCase):
                     portal_type=self.resource_portal_type,
                     title='Resource',)
     image = FileUpload(os.path.join(os.path.dirname(__file__),
-                      'test_data', 'images', 'erp5_logo.png'), 'rb')
+                      'test_data', 'images', 'erp5_logo.png'))
     client = self.portal.organisation_module.newContent(
                               portal_type='Organisation', title='Client',
                               default_image_file=image)
@@ -2782,7 +2818,7 @@ class TestOrder(TestOrderMixin, ERP5TypeTestCase):
                     portal_type=self.resource_portal_type,
                     title='Resource',)
     image = FileUpload(os.path.join(os.path.dirname(__file__),
-                      'test_data', 'images', 'erp5_logo.bmp'), 'rb')
+                      'test_data', 'images', 'erp5_logo.bmp'))
     client = self.portal.organisation_module.newContent(
                               portal_type='Organisation', title='Client',
                               default_image_file=image)

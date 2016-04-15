@@ -24,19 +24,13 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #
 ##############################################################################
-from datetime import datetime,timedelta
 import os
-import subprocess
 import sys
 import time
-import glob
-import SlapOSControler
 import json
 import time
 import shutil
 import logging
-import string
-import random
 import Utils
 
 import traceback
@@ -167,6 +161,7 @@ extends = %(software_config_path)s
 repository = <obfuscated_url>/%(buildout_section_id)s/%(buildout_section_id)s.git
 revision = %(revision)s
 ignore-ssl-certificate = true
+develop = false
 """ %     {'buildout_section_id': buildout_section_id,
           'revision': revision_dict[buildout_section_id]})
         else:
@@ -174,6 +169,8 @@ ignore-ssl-certificate = true
 [%(buildout_section_id)s]
 repository = %(repository_path)s
 branch = %(branch)s
+revision =
+develop = false
 """ %     {'buildout_section_id': buildout_section_id,
           'repository_path' : repository_path,
           'branch' : vcs_repository.get('branch','master')})
@@ -343,7 +340,7 @@ branch = %(branch)s
           except:
             log("testnode, error during requesting getTestType() method \
 from the distributor.")
-            raise NotImplementedError
+            raise
           # Select runner according to the test type
           if my_test_type == 'UnitTest':
             runner = UnitTestRunner(self)
@@ -396,6 +393,11 @@ from the distributor.")
               self.registerSuiteLog(test_result, node_test_suite)
               self.checkRevision(test_result,node_test_suite)
               node_test_suite.edit(test_result=test_result)
+              # get cluster configuration for this test suite, this is needed to
+              # know slapos parameters to user for creating instances
+              node_test_suite.edit(cluster_configuration=Utils.deunicodeData(
+                json.loads(self.test_suite_portal.generateConfiguration(
+                   node_test_suite.test_suite_title))['configuration_list'][0]))
               # Now prepare the installation of SlapOS and create instance
               status_dict = runner.prepareSlapOSForTestSuite(node_test_suite)
               # Give some time so computer partitions may start
@@ -443,6 +445,11 @@ from the distributor.")
           log("ValueError", exc_info=sys.exc_info())
           if node_test_suite is not None:
             node_test_suite.retry_software_count += 1
+          if remote_test_result_needs_cleanup:
+            test_result.reportFailure(
+              command='', stdout='',
+              stderr="ValueError was raised : %s" % (e,),
+            )
         except CancellationError, e:
           log("CancellationError", exc_info=sys.exc_info())
           self.process_manager.under_cancellation = False

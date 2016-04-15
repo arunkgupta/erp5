@@ -27,6 +27,7 @@
 #
 ##############################################################################
 from AccessControl import ClassSecurityInfo, Unauthorized
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions
 from Products.ERP5Type.Utils import fill_args_from_request
 from Products.CMFCore.utils import getToolByName, _checkConditionalGET, _setCacheHeaders,\
@@ -127,6 +128,8 @@ class DownloadableMixin:
       RESPONSE.setHeader('Content-Disposition',
                          'attachment; filename="%s"' % filename)
       RESPONSE.setHeader('Accept-Ranges', 'bytes')
+    else:
+      RESPONSE.setHeader('Content-Disposition', 'inline')
     return str(data)
 
   security.declareProtected(Permissions.AccessContentsInformation,
@@ -163,3 +166,5 @@ class DownloadableMixin:
     # pass format argument to force downloading raw content
     REQUEST = self.REQUEST
     return self.index_html(REQUEST, REQUEST.RESPONSE, format=None)
+
+InitializeClass(DownloadableMixin)

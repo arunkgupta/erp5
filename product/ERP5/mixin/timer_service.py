@@ -28,6 +28,7 @@
 
 import warnings
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.CMFActivity.ActivityTool import ActivityTool
 from Products.ERP5Type import Permissions
 try:
@@ -68,12 +69,12 @@ class TimerServiceMixin(object):
       return "Usubscribed from Timer Service"
     return "TimerService not available"
 
-  security.declareProtected(Permissions.ManageProperties, 'manage_beforeDelete')
+  security.declarePrivate('manage_beforeDelete')
   def manage_beforeDelete(self, *args, **kw):
     self.unsubscribe()
     super(TimerServiceMixin, self).manage_beforeDelete(*args, **kw)
 
-  security.declareProtected(Permissions.ManageProperties, 'manage_afterAdd')
+  security.declarePrivate('manage_afterAdd')
   def manage_afterAdd(self, *args, **kw):
     self.unsubscribe()
     super(TimerServiceMixin, self).manage_afterAdd(*args, **kw)
@@ -84,3 +85,5 @@ class TimerServiceMixin(object):
   getServerAddress = ActivityTool.getServerAddress.im_func
 
   _isValidNodeName = ActivityTool._isValidNodeName.im_func
+
+InitializeClass(TimerServiceMixin)

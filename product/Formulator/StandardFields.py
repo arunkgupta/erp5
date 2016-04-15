@@ -146,17 +146,22 @@ class DateTimeField(ZMIField):
       self.sub_form = create_datetime_list_sub_form()
       year_field = self.sub_form.get_field('year', include_disabled=1)
       year_field.overrides['items'] = BoundMethod(self,
-                                                  'override_year_items')
+                                                  '_override_year_items')
     else:
       assert 0, "Unknown input_style."
     self.on_value_css_class_changed(self.values['css_class'])
+
+  def on_value_timezone_style_changed(self, value):
+    if value:
+      input_style = self.get_value('input_style')
+      self.on_value_input_style_changed(input_style)
 
   def on_value_css_class_changed(self, value):
     for field in self.sub_form.get_fields():
       field.values['css_class'] = value
       field._p_changed = 1
 
-  def override_year_items(self):
+  def _override_year_items(self):
     """The method gets called to get the right amount of years.
     """
     start_datetime = self.get_value('start_datetime')
@@ -178,10 +183,6 @@ class DateTimeField(ZMIField):
     """
     if REQUEST.form['subfield_%s_%s' % (key, 'year')]:
       return None
-
-gmt_timezones =  [('GMT%s' %zone, 'GMT%s' %zone,) for zone in range(-12, 0)]\
-                  + [('GMT', 'GMT',),] \
-                  + [('GMT+%s' %zone, 'GMT+%s' %zone,) for zone in range(1, 13)]
 
 def create_datetime_text_sub_form():
   sub_form = BasicForm()
@@ -233,7 +234,7 @@ def create_datetime_text_sub_form():
                         title = "Timezone",
                         required = 0,
                         default = 'GMT',
-                        items = gmt_timezones,
+                        items = Widget.gmt_timezones,
                         size = 1)
   sub_form.add_fields([hour, minute, ampm, timezone], "time")
   return sub_form
@@ -291,7 +292,7 @@ def create_datetime_list_sub_form():
                         title = "Timezone",
                         required = 0,
                         default = 'GMT',
-                        items = gmt_timezones,
+                        items = Widget.gmt_timezones,
                         size = 1)
   sub_form.add_group("time")
 

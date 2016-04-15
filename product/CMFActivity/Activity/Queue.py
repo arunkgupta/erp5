@@ -43,7 +43,7 @@ INVALID_ORDER  = 2
 
 # Time global parameters
 MAX_PROCESSING_TIME = 900 # in seconds
-VALIDATION_ERROR_DELAY = 30 # in seconds
+VALIDATION_ERROR_DELAY = 15 # in seconds
 
 class Queue(object):
   """
@@ -80,15 +80,8 @@ class Queue(object):
 
   #scriptable_method_id_list = ['appendMessage', 'nextMessage', 'delMessage']
 
-  def __init__(self):
-    self.is_initialized = 0
-
-  def initialize(self, activity_tool):
-    # This is the only moment when
-    # we can set some global variables related
-    # to the ZODB context
-    if not self.is_initialized:
-      self.is_initialized = 1
+  def initialize(self, activity_tool, clear):
+    pass
 
   def deleteMessage(self, activity_tool, m):
     if not getattr(m, 'is_deleted', 0):
@@ -227,7 +220,9 @@ class Queue(object):
     return 0
 
   def countMessageWithTag(self, activity_tool,value):
-    return 0
+    """Return the number of messages which match the given tag.
+    """
+    return self.countMessage(activity_tool, tag=value)
 
   # Transaction Management
   def prepareQueueMessageList(self, activity_tool, message_list):

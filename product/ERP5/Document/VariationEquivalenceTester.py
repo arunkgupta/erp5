@@ -37,13 +37,16 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
   consistency between delivery movement and simulation movement
   for a specific property.
   """
-  meta_type = 'ERP5 Dict Equivalence Tester'
-  portal_type = 'Dict Equivalence Tester'
+  meta_type = 'ERP5 Variation Divergence Tester'
+  portal_type = 'Variation Divergence Tester'
   add_permission = Permissions.AddPortalContent
 
   # Declarative security
   security = ClassSecurityInfo()
   security.declareObjectProtected(Permissions.AccessContentsInformation)
+
+  tested_property = ('variation_category_list',
+                     'variation_property_dict')
 
   # Declarative properties
   property_sheets = (   PropertySheet.Base
@@ -59,8 +62,7 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
     If prevision_movement and decision_movement don't match, it returns a
     list : (prevision_value, decision_value, message, mapping)
     """
-    for tested_property in ('variation_category_list',
-                            'variation_property_dict'):
+    for tested_property_index, tested_property in enumerate(self.getTestedPropertyList()):
       if getattr(decision_movement, 'isPropertyRecorded',
                  lambda x:False)(tested_property):
         decision_value = decision_movement.getRecordedProperty(tested_property)
@@ -79,12 +81,20 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
         # should not happen
         raise AttributeError, 'prevision and decision values of this divergence tester should be list, tuple or dict.'
       if not result:
+        try:
+          # XXX We should use "getTranslatedTestedPropertyTitleList", but it seems to
+          # not exist for accessors having multiple possible values
+          property_name = self.getTestedPropertyTitleList()[tested_property_index]
+        except IndexError:
+          property_name = tested_property
         return (
           prevision_value, decision_value,
           'The value of ${property_name} is different between decision and prevision.',
-          dict(property_name=tested_property))
+          dict(property_name=property_name))
     return None
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'generateHashKey')
   def generateHashKey(self, movement):
     """
     Returns a hash key which can be used to optimise the
@@ -97,8 +107,7 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
     the recorded properties instead of the native ones.
     """
     value_list = []
-    for tested_property in ('variation_category_list',
-                            'variation_property_dict'):
+    for tested_property in self.getTestedPropertyList():
       if movement.isPropertyRecorded(tested_property):
         value_list.append(movement.getRecordedProperty(tested_property))
       else:
@@ -106,6 +115,8 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
                                                        tested_property))
     return 'variation/%r' % (value_list)
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getUpdatablePropertyDict')
   def getUpdatablePropertyDict(self, prevision_movement, decision_movement):
     """
     Returns a list of properties to update on decision_movement
@@ -117,5 +128,4 @@ class VariationEquivalenceTester(Predicate, EquivalenceTesterMixin):
     """
     get = self._getTestedPropertyValue
     return {tested_property: get(prevision_movement, tested_property)
-      for tested_property in ('variation_category_list',
-                              'variation_property_dict')}
+      for tested_property in self.getTestedPropertyList()}

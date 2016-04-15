@@ -17,6 +17,7 @@ import re
 import transaction
 from Acquisition import aq_parent, aq_inner, aq_base
 from AccessControl import ClassSecurityInfo, ModuleSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions, PropertySheet, Constraint
 from Products.CMFCore.PortalContent import ResourceLockedError
 from Products.CMFCore.utils import getToolByName
@@ -25,6 +26,7 @@ from Products.CMFDefault.utils import html_headcheck
 from Products.CMFDefault.utils import bodyfinder
 from Products.CMFDefault.utils import SimpleHTMLParser as CMFSimpleHTMLParser
 from zLOG import LOG
+from zExceptions import Forbidden
 
 security = ModuleSecurityInfo( 'Products.ERP5Type.WebDAVSupport' )
 
@@ -116,6 +118,8 @@ class TextContent:
     """ Handle HTTP (and presumably FTP?) PUT requests """
     self.dav__init(REQUEST, RESPONSE)
     self.dav__simpleifhandler(REQUEST, RESPONSE, refresh=1)
+    if REQUEST.environ['REQUEST_METHOD'] != 'PUT':
+      raise Forbidden, 'REQUEST_METHOD should be PUT.'
     body = REQUEST.get('BODY', '')
 
     try:
@@ -193,6 +197,8 @@ class TextContent:
     """ Used for FTP and apparently the ZMI now too """
     return len(self.manage_FTPget())
 
+InitializeClass(TextContent)
+
 from webdav.common import Locked, PreconditionFailed
 from webdav.interfaces import IWriteLock
 from webdav.NullResource import NullResource
@@ -205,6 +211,8 @@ def PUT(self, REQUEST, RESPONSE):
           return NullResource_PUT(self, REQUEST, RESPONSE)
 
         self.dav__init(REQUEST, RESPONSE)
+        if REQUEST.environ['REQUEST_METHOD'] != 'PUT':
+          raise Forbidden, 'REQUEST_METHOD should be PUT.'
 
         name = self.__name__
         parent = self.__parent__

@@ -104,226 +104,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-/*jslint indent: 2, maxerr: 3, nomen: true */\n
-/*global window, document, rJS, URI, RSVP */\n
-(function (window, document, rJS, URI, RSVP) {\n
-  "use strict";\n
-\n
-  rJS(window)\n
-    /////////////////////////////////////////////////////////////////\n
-    // ready\n
-    /////////////////////////////////////////////////////////////////\n
-    // Init local properties\n
-    .ready(function (g) {\n
-      g.props = {};\n
-      \n
-    })\n
-\n
-    // Assign the element to a variable\n
-    .ready(function (g) {\n
-      return g.getElement()\n
-        .push(function (element) {\n
-          g.props.element = element;\n
-        });\n
-    })\n
-\n
-    //////////////////////////////////////////////\n
-    // acquired method\n
-    //////////////////////////////////////////////\n
-    .declareAcquiredMethod("jio_allDocs", "jio_allDocs")\n
-    .declareAcquiredMethod("whoWantToDisplayThis", "whoWantToDisplayThis")\n
-    .declareAcquiredMethod("pleasePublishMyState", "pleasePublishMyState")\n
-    //////////////////////////////////////////////\n
-    // initialize the gadget content\n
-    //////////////////////////////////////////////\n
-    .declareMethod(\'render\', function (options) {\n
-      var gadget = this,\n
-        thead = gadget.props.element.querySelector(\'thead\'),\n
-        field_json = options.field_json,\n
-        tr = document.createElement("tr"),\n
-        th,\n
-        i;\n
-\n
-      gadget.props.field_json = field_json;\n
-      gadget.props.begin_from = parseInt(options.begin_from, 10) || 0;\n
-      gadget.props.extended_search = options.extended_search;\n
-\n
-      for (i = 0; i < field_json.column_list.length; i += 1) {\n
-        th = document.createElement("th");\n
-        th.textContent = field_json.column_list[i][1];\n
-        tr.appendChild(th);\n
-      }\n
-      thead.appendChild(tr);\n
-    })\n
-\n
-    //////////////////////////////////////////////\n
-    // render the listbox in an asynchronous way\n
-    //////////////////////////////////////////////\n
-    .declareService(function () {\n
-      var gadget = this,\n
-        props = gadget.props,\n
-        field_json = props.field_json,\n
-        begin_from = props.begin_from,\n
-        table = props.element.querySelector(\'table\'),\n
-        original_tfoot = props.element.querySelector(\'tfoot\'),\n
-        tbody = document.createElement("tbody"),\n
-        url_query =  props.extended_search,\n
-        query_string = "",\n
-        lines = field_json.lines,\n
-        select_list = [],\n
-        dataset,\n
-        counter,\n
-        i;\n
-\n
-      if (field_json.query === undefined) {\n
-        original_tfoot.textContent = "Unsupported list method: \'" + field_json.list_method + "\'";\n
-        return;\n
-      }\n
-     // function buildQueryString(previous, next) {\n
-     //   return previous + next[0] + \':= "\' + url_query + \'" OR \';\n
-     // }\n
-\n
-      if (url_query) {\n
-        //query_string = field_json.column_list.reduce(buildQueryString, \' AND (\').replace(new RegExp("OR " + \'$\'), \')\');\n
-        query_string = \' AND \' + url_query;\n
-      }\n
-\n
-      for (i = 0; i < field_json.column_list.length; i += 1) {\n
-        select_list.push(field_json.column_list[i][0]);\n
-      }\n
-\n
-      return gadget.jio_allDocs({\n
-        "query": new URI(field_json.query).query(true).query + query_string,\n
-        "limit": [begin_from, begin_from + lines + 1],\n
-        "select_list": select_list\n
-      }).push(function (result) {\n
-        var promise_list = [result];\n
-        counter = Math.min(result.data.total_rows, lines);\n
-\n
-        for (i = 0; i < counter; i += 1) {\n
-          promise_list.push(\n
-            gadget.whoWantToDisplayThis(result.data.rows[i].id)\n
-          );\n
-        }\n
-        return RSVP.all(promise_list);\n
-\n
-      }).push(function (result_list) {\n
-        var j,\n
-          tr,\n
-          th,\n
-          a,\n
-          result = result_list[0],\n
-          tmp_url;\n
-\n
-        dataset = result;\n
-\n
-        for (i = 0; i < counter; i += 1) {\n
-          tr = document.createElement("tr");\n
-          tmp_url = result_list[i + 1];\n
-\n
-          for (j = 0; j < field_json.column_list.length; j += 1) {\n
-            th = document.createElement("th");\n
-            a = document.createElement("a");\n
-            a.href = tmp_url;\n
-            a.className = "ui-link";\n
-            a.textContent = (result.data.rows[i]\n
-                .value[field_json.column_list[j][0]] || "");\n
-            th.appendChild(a);\n
-            tr.appendChild(th);\n
-          }\n
-          tbody.appendChild(tr);\n
-        }\n
-\n
-      }).push(function () {\n
-        var prev_param = {},\n
-          next_param = {};\n
-\n
-        function setNext() {\n
-          if (dataset.data.rows.length > lines) {\n
-            next_param.begin_from = begin_from + lines;\n
-          }\n
-        }\n
-\n
-        if (begin_from === 0) {\n
-          setNext();\n
-        } else {\n
-          prev_param.begin_from = begin_from - lines;\n
-          setNext();\n
-        }\n
-\n
-        return RSVP.all([\n
-          gadget.pleasePublishMyState(prev_param),\n
-          gadget.pleasePublishMyState(next_param)\n
-        ]);\n
-\n
-      }).push(function (url_list) {\n
-        var fragment = document.createDocumentFragment(),\n
-          tfoot = gadget.__element.querySelector("tfoot"),\n
-          //tfoot = document.createElement("tfoot"),\n
-          tr = document.createElement("tr"),\n
-          th = document.createElement("th"),\n
-          paging_prev = document.createElement("a"),\n
-          paging_next = document.createElement("a"),\n
-          paging_info = document.createElement("span"),\n
-          paging_menu = document.createElement("div"),\n
-          paging_wrap = document.createElement("div"),\n
-          len;\n
-\n
-        th.setAttribute("colspan", field_json.column_list.length);\n
-        // NOTE: Romain: paging menu with 3+ buttons should have another class name (like ui-paging-grid)\n
-        paging_menu.className = "ui-controlgroup ui-controlgroup-horizontal ui-corner-all ui-paging-menu";\n
-        paging_wrap.className = "ui-controlgroup-controls";\n
-\n
-        paging_prev.className = "ui-btn ui-icon-carat-l ui-btn-icon-left responsive ui-first-child";\n
-        paging_prev.textContent = "Previous";\n
-        paging_prev.href = url_list[0];\n
-        paging_info.className = "ui-btn ui-disabled";\n
-        if ((begin_from === 0) && (counter === 0)) {\n
-          paging_info.textContent = "No records";\n
-        } else if ((dataset.data.rows.length <= lines) && (begin_from === 0)) {\n
-          paging_info.textContent = counter + " record(s)";\n
-        } else {\n
-          paging_info.textContent = "Records " + (((begin_from + lines) / lines - 1) * lines + 1) + " to " + (((begin_from + lines) / lines - 1) * lines + counter);\n
-        }\n
-        // paging_info.textContent = "Page " + ((begin_from + lines) / lines);\n
-        paging_next.className = "ui-btn ui-icon-carat-r ui-btn-icon-right responsive ui-last-child";\n
-        paging_next.textContent = "Next";\n
-        paging_next.href = url_list[1];\n
-\n
-        if (begin_from === 0) {\n
-          paging_prev.className += " ui-disabled";\n
-        }\n
-        if (dataset.data.rows.length <= lines) {\n
-          paging_next.className += " ui-disabled";\n
-        }\n
-\n
-        paging_wrap.appendChild(paging_prev);\n
-        paging_wrap.appendChild(paging_info);\n
-        paging_wrap.appendChild(paging_next);\n
-        paging_menu.appendChild(paging_wrap);\n
-        th.appendChild(paging_menu);\n
-        tr.appendChild(th);\n
-        tfoot.appendChild(tr);\n
-        fragment.appendChild(tbody);\n
-        fragment.appendChild(tfoot);\n
-\n
-        for (len = table.children.length; len > 0; len -= 1) {\n
-          table.removeChild(table.lastChild);\n
-        }\n
-\n
-        table.appendChild(fragment);\n
-\n
-      });\n
-    });\n
-\n
-}(window, document, rJS, URI, RSVP));
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Listbox JS</string> </value>
         </item>
@@ -442,7 +222,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>sven</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -456,7 +236,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>939.5358.33203.30173</string> </value>
+                <value> <string>950.24504.62713.15360</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -474,7 +254,7 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1416588079.38</float>
+                        <float>1460362264.77</float>
                         <string>UTC</string>
                       </tuple>
                     </state>

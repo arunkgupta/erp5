@@ -292,7 +292,7 @@ class SlapOSControler(object):
     except:
         self.log("SlapOSControler.initializeSlapOSControler, \
                  exception in registerSupply", exc_info=sys.exc_info())
-        raise ValueError("Unable to initializeSlapOSControler")
+        raise
     # Reset all previously generated software if needed
     if reset_software:
       self._resetSoftware()
@@ -332,10 +332,12 @@ class SlapOSControler(object):
   def spawn(self, *args, **kw):
     return self.process_manager.spawn(*args, **kw)
 
-  def runSoftwareRelease(self, config, environment):
+  def runSoftwareRelease(self, config, environment, **kw):
     self.log("SlapOSControler.runSoftwareRelease")
     cpu_count = os.sysconf("SC_NPROCESSORS_ONLN")
     os.putenv('MAKEFLAGS', '-j%s' % cpu_count)
+    os.putenv('NPY_NUM_BUILD_JOBS', '%s' % cpu_count)
+    os.putenv('BUNDLE_JOBS', '%s' % cpu_count)
     os.environ['PATH'] = environment['PATH']
     # a SR may fail for number of reasons (incl. network failures)
     # so be tolerant and run it a few times before giving up
@@ -350,31 +352,14 @@ class SlapOSControler(object):
     return status_dict
 
   def runComputerPartition(self, config, environment,
-                           stdout=None, stderr=None):
-    self.log("SlapOSControler.runComputerPartition")
-    # cloudooo-json is required but this is a hack which should be removed
-    config['instance_dict']['cloudooo-json'] = "{}"
-    # report-url, report-project and suite-url are required to seleniumrunner
-    # instance. This is a hack which must be removed.
-    config['instance_dict']['report-url'] = config.get("report-url", "")
-    config['instance_dict']['report-project'] = config.get("report-project", "")
-    config['instance_dict']['suite-url'] = config.get("suite-url", "")
-    # XXX: Hack to minimize writes to storage holding MySQL databases.
-    #      Note this is something we want for all test suites, so it would
-    #      not be better to define this parameter on each test suite.
-    # XXX: Also move here the number of test db to create, so that software
-    #      release stop create ones by default.
-    config['instance_dict']['_'] = json.dumps({"mariadb": {
-      "relaxed-writes": True,
-      "mariadb-relaxed-writes": True, # BBB
-      "test-database-amount": 30,
-      }})
+                           stdout=None, stderr=None, cluster_configuration=None, **kw):
+    self.log("SlapOSControler.runComputerPartition with cluster_config: %r" % (cluster_configuration,))
     for path in self.software_path_list:
       try:
         self.slap.registerOpenOrder().request(path,
           partition_reference='testing partition %s' % \
             self.software_path_list.index(path),
-          partition_parameter_kw=config['instance_dict'])
+          partition_parameter_kw=cluster_configuration)
       except:
         self.log("SlapOSControler.runComputerPartition, \
                  exception in registerOpenOrder", exc_info=sys.exc_info())

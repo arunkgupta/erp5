@@ -31,7 +31,6 @@
 """
 
 import unittest
-import os
 
 from DateTime import DateTime
 from Products.CMFCore.utils import _checkPermission
@@ -163,6 +162,7 @@ class AccountingTestCase(ERP5TypeTestCase):
     newSecurityManager(None, user)
 
   def afterSetUp(self):
+    super(AccountingTestCase, self).login()
     self.account_module = self.portal.account_module
     self.accounting_module = self.portal.accounting_module
     self.organisation_module = self.portal.organisation_module
@@ -1852,6 +1852,82 @@ class TestClosingPeriod(AccountingTestCase):
     balance_transaction.reindexObject()
     self.tic()
 
+  def test_ProfitAndLossUsedInPeriodWithMultipleCurrency(self):
+    """When the profit and loss account has a non zero balance at the end of
+    the period, AccountingPeriod_createBalanceTransaction script should add
+    a line for each currency used.
+    """
+    period = self.section.newContent(portal_type='Accounting Period')
+    period.setStartDate(DateTime(2006, 1, 1))
+    period.setStopDate(DateTime(2006, 12, 31))
+    pl_account = self.portal.account_module.newContent(
+                    portal_type='Account',
+                    account_type='equity',
+                    gap='my_country/my_accounting_standards/1',
+                    title='Profit & Loss')
+    pl_account.validate()
+
+    transaction1 = self._makeOne(
+        start_date=DateTime(2006, 1, 1),
+        portal_type='Accounting Transaction',
+        simulation_state='delivered',
+        lines=(dict(source_value=self.account_module.goods_purchase,
+                    source_debit=400),
+               dict(source_value=pl_account,
+                    source_debit=100),
+               dict(source_value=self.account_module.stocks,
+                    source_credit=500)))
+    self.assertEqual([], transaction1.checkConsistency())
+
+    transaction2 = self._makeOne(
+        start_date=DateTime(2006, 1, 2),
+        portal_type='Accounting Transaction',
+        resource_value=self.portal.currency_module.yen,
+        simulation_state='delivered',
+        lines=(dict(source_value=self.account_module.goods_purchase,
+                    source_debit=9000,
+                    source_asset_debit=90),
+               dict(source_value=pl_account,
+                    source_debit=1000,
+                    source_asset_debit=10),
+               dict(source_value=self.account_module.stocks,
+                    source_credit=10000,
+                    source_asset_credit=100)))
+    self.assertEqual([], transaction2.checkConsistency())
+
+    period.AccountingPeriod_createBalanceTransaction(
+                  profit_and_loss_account=pl_account.getRelativeUrl())
+
+    balance_transaction_list = self.accounting_module.contentValues(
+                              portal_type='Balance Transaction')
+    self.assertEqual(1, len(balance_transaction_list))
+    balance_transaction = balance_transaction_list[0]
+    balance_transaction.alternateReindexObject()
+    movement_list = balance_transaction.getMovementList()
+
+    pl_movement_list = [m for m in movement_list
+                      if m.getDestinationValue() == pl_account]
+    self.assertEqual(2, len(pl_movement_list))
+    # This is a 400 + 90 loss, plus the 100 using EUR
+    self.assertEqual(sorted([
+        (
+         100 + 490.,
+         None,
+         self.portal.currency_module.euro, ),
+        (
+         1000.,
+         10.,
+         self.portal.currency_module.yen, ),
+        ]), sorted([(
+            m.getQuantity(),
+            m.getDestinationTotalAssetPrice(),
+            m.getResourceValue(),
+            ) for m in pl_movement_list]))
+
+    self.tic()
+    balance_transaction.reindexObject()
+    self.tic()
+
   def test_BalanceTransactionWhenProfitAndLossBalanceIsZero(self):
     # The case of a balance transaction after all accounts have a 0 balance.
     period1 = self.section.newContent(portal_type='Accounting Period')
@@ -2424,6 +2500,40 @@ class TestClosingPeriod(AccountingTestCase):
                               section_uid=self.section.getUid(),
                               node_uid=self.account_module.receivable.getUid()))
 
+  def test_ParrallelClosingRefused(self):
+    organisation_module = self.organisation_module
+    stool = self.portal.portal_simulation
+    period = self.section.newContent(portal_type='Accounting Period')
+    period.setStartDate(DateTime(2006, 1, 1))
+    period.setStopDate(DateTime(2006, 12, 31))
+    period.start()
+    period2 = self.section.newContent(portal_type='Accounting Period')
+    period2.setStartDate(DateTime(2007, 1, 1))
+    period2.setStopDate(DateTime(2007, 12, 31))
+    period2.start()
+
+    pl = self.portal.account_module.newContent(
+              portal_type='Account',
+              account_type='equity')
+
+    transaction1 = self._makeOne(
+        start_date=DateTime(2006, 1, 1),
+        destination_section_value=organisation_module.client_1,
+        portal_type='Sale Invoice Transaction',
+        simulation_state='delivered',
+        lines=(dict(source_value=self.account_module.goods_sales,
+                    source_credit=100),
+               dict(source_value=self.account_module.receivable,
+                    source_debit=100)))
+
+    self.portal.portal_workflow.doActionFor(
+           period, 'stop_action',
+           profit_and_loss_account=pl.getRelativeUrl())
+
+    self.assertRaises(ValidationFailed,
+          self.getPortal().portal_workflow.doActionFor,
+          period2, 'stop_action' )
+
 
 
 class TestAccountingExport(AccountingTestCase):
@@ -2453,6 +2563,11 @@ class TestAccountingExport(AccountingTestCase):
 class TestTransactions(AccountingTestCase):
   """Test behaviours and utility scripts for Accounting Transactions.
   """
+
+  def getBusinessTemplateList(self):
+    return AccountingTestCase.getBusinessTemplateList(self) + \
+        ('erp5_invoicing', 'erp5_simplified_invoicing')
+
   def _resetIdGenerator(self):
     # clear all existing ids in portal ids
       self.portal.portal_ids.clearGenerator(all=True)
@@ -3193,6 +3308,124 @@ class TestTransactions(AccountingTestCase):
     for line in invoice.contentValues():
       self.assertTrue(line.getGroupingReference())
 
+  def test_roundDebitCredit_raises_if_big_difference(self):
+    invoice = self._makeOne(
+      portal_type='Sale Invoice Transaction',
+      lines=(dict(source_value=self.account_module.goods_sales,
+                source_debit=100.032345),
+           dict(source_value=self.account_module.receivable,
+                source_credit=100.000001)))
+    precision = invoice.getQuantityPrecisionFromResource(invoice.getResource())
+    invoice.newContent(portal_type='Invoice Line', quantity=1, price=100)
+    self.assertRaises(invoice.AccountingTransaction_roundDebitCredit)
+
+  def test_roundDebitCredit_when_payable_is_different_total_price(self):
+    invoice = self._makeOne(
+      portal_type='Purchase Invoice Transaction',
+      stop_date=DateTime(),
+      destination_section_value=self.section,
+      source_section_value=self.organisation_module.supplier,
+      lines=(dict(source_value=self.account_module.goods_purchase,
+                id="expense",
+                destination_debit=100.000001),
+           dict(source_value=self.account_module.payable,
+                id="payable",
+                destination_credit=100.012345)))
+    precision = invoice.getQuantityPrecisionFromResource(invoice.getResource())
+    invoice.newContent(portal_type='Invoice Line', quantity=1, price=100)
+    line_list = invoice.getMovementList(
+                    portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertNotEqual(0.0,
+      sum([round(g.getQuantity(), precision) for g in line_list]))
+    invoice.AccountingTransaction_roundDebitCredit()
+    line_list = invoice.getMovementList(
+                 portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertEqual(0.0,
+      sum([round(g.getQuantity(), precision) for g in line_list]))
+    self.assertEqual(100.00, invoice.payable.getDestinationCredit())
+    self.assertEqual(100.00, invoice.expense.getDestinationDebit())
+    self.assertEqual([], invoice.checkConsistency())
+
+  def test_roundDebitCredit_when_payable_is_equal_total_price(self):
+    invoice = self._makeOne(
+      portal_type='Purchase Invoice Transaction',
+      stop_date=DateTime(),
+      destination_section_value=self.section,
+      source_section_value=self.organisation_module.supplier,
+      lines=(dict(source_value=self.account_module.goods_purchase,
+                id="expense",
+                destination_debit=100.012345),
+           dict(source_value=self.account_module.payable,
+                id="payable",
+               destination_credit=100.000001)))
+    precision = invoice.getQuantityPrecisionFromResource(invoice.getResource())
+    invoice.newContent(portal_type='Invoice Line', quantity=1, price=100)
+    line_list = invoice.getMovementList(
+                    portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertNotEqual(0.0,
+      sum([round(g.getQuantity(), precision) for g in line_list]))
+    invoice.AccountingTransaction_roundDebitCredit()
+    line_list = invoice.getMovementList(
+                 portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertEqual(0.0,
+      sum([round(g.getQuantity(), precision) for g in line_list]))
+    self.assertEqual(100.00, invoice.payable.getDestinationCredit())
+    self.assertEqual(100.00, invoice.expense.getDestinationDebit())
+    self.assertEqual([], invoice.checkConsistency())
+
+  def test_roundDebitCredit_when_receivable_is_equal_total_price(self):
+    invoice = self._makeOne(
+      portal_type='Sale Invoice Transaction',
+      stop_date=DateTime(),
+      destination_section_value=self.section,
+      source_section_value=self.section,
+      lines=(dict(source_value=self.account_module.goods_sales,
+                id="income",
+                source_credit=100.012345),
+           dict(source_value=self.account_module.receivable,
+                id="receivable",
+                source_debit=100.000001)))
+    precision = invoice.getQuantityPrecisionFromResource(invoice.getResource())
+    invoice.newContent(portal_type='Invoice Line', quantity=1, price=100)
+    line_list = invoice.getMovementList(
+                    portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertNotEqual(sum([round(g.getQuantity(), precision) for g in line_list]),
+      0.0)
+    invoice.AccountingTransaction_roundDebitCredit()
+    line_list = invoice.getMovementList(
+                 portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertEqual(sum([round(g.getQuantity(), precision) for g in line_list]),
+      0.0)
+    self.assertEqual(100.00, invoice.income.getSourceCredit())
+    self.assertEqual(100.00, invoice.receivable.getSourceDebit())
+    self.assertEqual([], invoice.checkConsistency())
+
+  def test_roundDebitCredit_when_receivable_is_different_total_price(self):
+    invoice = self._makeOne(
+      portal_type='Sale Invoice Transaction',
+      stop_date=DateTime(),
+      destination_section_value=self.section,
+      source_section_value=self.section,
+      lines=(dict(source_value=self.account_module.goods_sales,
+                id="income",
+                source_credit=100.000001),
+           dict(source_value=self.account_module.receivable,
+                id="receivable",
+                source_debit=100.012345)))
+    precision = invoice.getQuantityPrecisionFromResource(invoice.getResource())
+    invoice.newContent(portal_type='Invoice Line', quantity=1, price=100)
+    line_list = invoice.getMovementList(
+                    portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertNotEqual(sum([round(g.getQuantity(), precision) for g in line_list]),
+      0.0)
+    invoice.AccountingTransaction_roundDebitCredit()
+    line_list = invoice.getMovementList(
+                 portal_type=invoice.getPortalAccountingMovementTypeList())
+    self.assertEqual(sum([round(g.getQuantity(), precision) for g in line_list]),
+      0.0)
+    self.assertEqual(100.00, invoice.income.getSourceCredit())
+    self.assertEqual(100.00, invoice.receivable.getSourceDebit())
+    self.assertEqual([], invoice.checkConsistency())
 
   def test_AccountingTransaction_getTotalDebitCredit(self):
     # source view
@@ -3316,6 +3549,103 @@ class TestTransactions(AccountingTestCase):
                        ('Organisation 1 (Organisation)',
                         organisation1.getRelativeUrl())],
                        self.portal.Account_getDestinationSectionItemList())
+
+  def test_AccountingTransaction_getListBoxColumnList_does_not_enable_section_column_when_only_two_sections(self):
+    # AccountingTransaction_getListBoxColumnList is the script returning the
+    # columns to display in AccountingTransaction_view.
+    at = self._makeOne(
+      portal_type='Accounting Transaction',
+      source_section_value=self.section,
+      destination_section_value=self.organisation_module.client_1,
+      lines=(dict(source_value=self.account_module.goods_purchase,
+                  source_debit=500),
+             dict(source_value=self.account_module.receivable,
+                  source_credit=500)))
+    self.assertNotIn(
+      ('getDestinationSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=True))
+    self.assertNotIn(
+      ('getSourceSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=False))
+
+  def test_AccountingTransaction_getListBoxColumnList_enables_destination_section_column_when_more_than_two_sections(self):
+    # AccountingTransaction_getListBoxColumnList is the script returning the
+    # columns to display in AccountingTransaction_view.
+    at = self._makeOne(
+      portal_type='Accounting Transaction',
+      source_section_value=self.section,
+      destination_section_value=self.organisation_module.client_1,
+      lines=(dict(source_value=self.account_module.goods_purchase,
+                  source_debit=500),
+             dict(source_value=self.account_module.receivable,
+                  destination_section_value=self.organisation_module.client_2,
+                  source_credit=500)))
+    # Only the source view have one extra column, because from destination point
+    # of view, there is only one mirror section
+    self.assertIn(
+      ('getDestinationSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=True))
+    self.assertNotIn(
+      ('getSourceSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=False))
+
+  def test_AccountingTransaction_getListBoxColumnList_enables_source_section_column_when_more_than_two_sections(self):
+    at = self._makeOne(
+      portal_type='Accounting Transaction',
+      destination_section_value=self.section,
+      source_section_value=self.organisation_module.client_1,
+      lines=(dict(destination_value=self.account_module.goods_purchase,
+                  destination_debit=500),
+             dict(destination_value=self.account_module.receivable,
+                  source_section_value=self.organisation_module.client_2,
+                  destination_credit=500)))
+    # Only the destination view have one extra column, because from source point
+    # of view, there is only one mirror section
+    self.assertNotIn(
+      ('getDestinationSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=True))
+    self.assertIn(
+      ('getSourceSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=False))
+
+  def test_AccountingTransaction_getListBoxColumnList_enables_source_section_column_when_same_section_both_sides(self):
+    # Edge case, source section from the transaction is also used as destination section on a line
+    # does not make much sense, but have to be visible when looking at transaction
+    at = self._makeOne(
+      portal_type='Accounting Transaction',
+      source_section_value=self.section,
+      destination_section_value=self.organisation_module.client_1,
+      lines=(dict(source_value=self.account_module.goods_purchase,
+                  source_debit=500),
+             dict(source_value=self.account_module.receivable,
+                  destination_section_value=self.section, # Source section is also destination section here
+                  source_credit=500)))
+    self.assertIn(
+      ('getDestinationSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=True))
+    self.assertNotIn(
+      ('getSourceSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=False))
+
+  def test_AccountingTransaction_getListBoxColumnList_enables_destination_section_column_when_same_section_both_sides(self):
+    # Edge case, destination section from the transaction is also used as source section on a line
+    # does not make much sense, but have to be visible when looking at transaction
+    at = self._makeOne(
+      portal_type='Accounting Transaction',
+      destination_section_value=self.section,
+      source_section_value=self.organisation_module.client_1,
+      lines=(dict(destination_value=self.account_module.goods_purchase,
+                  destination_debit=500),
+             dict(destination_value=self.account_module.receivable,
+                  source_section_value=self.section, # Destination section is also here section here
+                  destination_credit=500)))
+    self.assertNotIn(
+      ('getDestinationSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=True))
+    self.assertIn(
+      ('getSourceSectionTitle', 'Third Party'),
+      at.AccountingTransaction_getListBoxColumnList(source=False))
+
 
 class TestAccountingWithSequences(ERP5TypeTestCase):
   """The first test for Accounting

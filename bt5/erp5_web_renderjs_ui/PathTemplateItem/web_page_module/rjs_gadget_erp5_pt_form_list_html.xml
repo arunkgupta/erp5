@@ -102,40 +102,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-<!DOCTYPE html>\n
-<html>\n
-  <head>\n
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />\n
-    <meta name="viewport" content="width=device-width, user-scalable=no" />\n
-    <title>ERP5 PT Form List</title>\n
-\n
-    <!-- renderjs -->\n
-    <script src="RSVP.js" type="text/javascript"></script>\n
-    <script src="renderjs.js" type="text/javascript"></script>\n
-\n
-    <!-- custom script -->\n
-    <script src="gadget_global.js" type="text/javascript"></script>\n
-    <script src="gadget_erp5_pt_form_list.js" type="text/javascript"></script>\n
-\n
-  </head>\n
-  <body>\n
-       <div data-gadget-url="gadget_erp5_searchfield.html"\n
-              data-gadget-scope="erp5_searchfield"\n
-              data-gadget-sandbox="public"></div>\n
-    \n
-      <div data-gadget-url="gadget_erp5_form.html"\n
-              data-gadget-scope="erp5_form"\n
-              data-gadget-sandbox="public"></div>\n
-\n
-  </body>\n
-</html>
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Form List</string> </value>
         </item>
@@ -254,7 +220,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>romain</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -268,7 +234,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>936.46405.53164.22289</string> </value>
+                <value> <string>946.44927.40202.16725</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -286,8 +252,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1407339467.24</float>
-                        <string>GMT</string>
+                        <float>1460379295.13</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

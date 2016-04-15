@@ -30,6 +30,7 @@
 #
 ##############################################################################
 
+import os
 import string
 import struct
 import subprocess
@@ -334,6 +335,11 @@ class Image(TextConvertableMixin, File, OFSImage):
       parameter_list.append('-')
 
     if format:
+      # Is there a way to make 'convert' fail if the format is unknown,
+      # instead of treating this whole parameter as an output file path?
+      # As a workaround, we run 'convert' in a non-writeable directory.
+      if '/' in format or os.access('/', os.W_OK):
+        raise ConversionError
       parameter_list.append('%s:-' % format)
     else:
       parameter_list.append('-')
@@ -342,10 +348,14 @@ class Image(TextConvertableMixin, File, OFSImage):
     if self.getContentType() == "image/svg+xml":
       data = transformUrlToDataURI(data)
 
+    env = os.environ.copy()
+    env.update({'LC_NUMERIC':'C'})
     process = subprocess.Popen(parameter_list,
+                               env=env,
                                stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE,
+                               cwd='/',
                                close_fds=True)
     try:
         # XXX: The only portable way is to pass what stdin.write can accept,
@@ -428,6 +438,7 @@ class Image(TextConvertableMixin, File, OFSImage):
     File.PUT(self, REQUEST, RESPONSE)
     self._update_image_info()
 
+  security.declareProtected(Permissions.AccessContentsInformation, 'getDefaultImageQuality')
   def getDefaultImageQuality(self, format=None):
     """
     Get default image quality for a format.

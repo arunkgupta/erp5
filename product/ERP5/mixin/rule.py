@@ -29,6 +29,7 @@
 import transaction
 import zope.interface
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Acquisition import aq_base
 from Products.ERP5Type import Permissions, interfaces
 from Products.ERP5Type.Base import Base
@@ -157,6 +158,8 @@ class RuleMixin(Predicate):
   movement_type = 'Simulation Movement'
 
   # Implementation of IRule
+  security.declareProtected(Permissions.ModifyPortalContent,
+                            'constructNewAppliedRule')
   def constructNewAppliedRule(self, context, **kw):
     """
     Create a new applied rule in the context.
@@ -189,6 +192,8 @@ class RuleMixin(Predicate):
       return False
     return super(RuleMixin, self).test(*args, **kw)
 
+  security.declareProtected(Permissions.ModifyPortalContent,
+                            'expand')
   def expand(self, applied_rule, expand_policy=None, **kw):
     """
     Expand this applied rule to create new documents inside the
@@ -472,8 +477,10 @@ class RuleMixin(Predicate):
         new_movement = self._newProfitAndLossMovement(prevision_movement)
         movement_collection_diff.addNewMovement(new_movement)
 
+InitializeClass(RuleMixin)
 
 class SimulableMixin(Base):
+  security = ClassSecurityInfo()
 
   def updateSimulation(self, **kw):
     """Create/update related simulation trees by activity
@@ -526,8 +533,8 @@ class SimulableMixin(Base):
       create_root    -- if a root applied rule is missing, create and expand it
       expand_root    -- expand related root applied rule,
                         create it before if missing
-      expand_related -- reindex related simulation movements (recursively)
-      index_related  -- expand related simulation movements
+      expand_related -- expand related simulation movements
+      index_related  -- reindex related simulation movements (recursively)
     """
     if create_root or expand_root:
       applied_rule = self._getRootAppliedRule()
@@ -551,6 +558,8 @@ class SimulableMixin(Base):
         if not movement.aq_inContextOf(applied_rule):
           movement.recursiveReindexObject(activate_kw=activate_kw)
 
+  security.declareProtected( Permissions.AccessContentsInformation,
+                             'getRuleReference')
   def getRuleReference(self):
     """Returns an appropriate rule reference
 
@@ -600,8 +609,11 @@ class SimulableMixin(Base):
         return applied_rule
       raise SimulationError("No such rule as %r is found" % rule_reference)
 
+  security.declarePrivate('manage_beforeDelete')
   def manage_beforeDelete(self, item, container):
     """Delete related Applied Rule"""
     for o in self.getCausalityRelatedValueList(portal_type='Applied Rule'):
       o.getParentValue().deleteContent(o.getId())
     super(SimulableMixin, self).manage_beforeDelete(item, container)
+
+InitializeClass(SimulableMixin)

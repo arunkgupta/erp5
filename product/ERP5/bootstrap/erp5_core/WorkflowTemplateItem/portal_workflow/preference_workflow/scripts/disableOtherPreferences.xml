@@ -49,33 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>from Products.ERP5Type.Message import translateString\n
-\n
-pref = sci[\'object\']\n
-portal = sci.getPortal()\n
-LOG = lambda msg: pref.log("PreferenceWorkflow.disableOtherPreferences on %s"%pref, msg)\n
-\n
-# deactivate all other preferences of the same level that the user can view\n
-for p in portal.portal_preferences.searchFolder():\n
-  p = p.getObject()\n
-  try :\n
-    if portal.portal_membership.getAuthenticatedMember().allowed(p, [\'Owner\', ]) :\n
-      if p != pref and \\\n
-         p.getPreferenceState() == \'enabled\' and \\\n
-         p.getPriority() == pref.getPriority() and \\\n
-         p.getPortalType() == pref.getPortalType() :\n
-        p.portal_workflow.doActionFor(p,\n
-           \'disable_action\',\n
-           wf_id=\'preference_workflow\', \n
-           comment=translateString(\n
-          \'Automatically disabled when enabling ${preference_title}.\',\n
-          mapping={\'preference_title\': pref.getTitle()}))\n
-  except \'Unauthorized\', a :\n
-    LOG("not authorized to deactivate %s"%p)\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>sci</string> </value>
         </item>

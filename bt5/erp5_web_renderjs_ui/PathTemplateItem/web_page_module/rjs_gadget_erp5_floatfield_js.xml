@@ -98,49 +98,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string>/*global window, rJS */\n
-/*jslint indent: 2, maxerr: 3 */\n
-(function (window, rJS) {\n
-  "use strict";\n
-\n
-  rJS(window)\n
-    .ready(function (gadget) {\n
-      return gadget.getElement()\n
-        .push(function (element) {\n
-          gadget.element = element;\n
-        });\n
-    })\n
-    .declareMethod(\'render\', function (options) {\n
-      var input = this.element.querySelector(\'input\'),\n
-        field_json = options.field_json || {};\n
-      input.setAttribute(\n
-        \'value\',\n
-        field_json.value || field_json.default || ""\n
-      );\n
-      input.setAttribute(\'name\', field_json.key);\n
-      input.setAttribute(\'title\', field_json.title);\n
-      if (field_json.required === 1) {\n
-        input.setAttribute(\'required\', \'required\');\n
-      }\n
-      if (field_json.editable !== 1) {\n
-        input.setAttribute(\'readonly\', \'readonly\');\n
-        input.setAttribute(\'data-wrapper-class\', \'ui-state-disabled ui-state-readonly\');\n
-        input.setAttribute(\'disabled\', \'disabled\');\n
-\n
-      }\n
-    })\n
-\n
-    .declareMethod(\'getContent\', function () {\n
-      var input = this.element.querySelector(\'input\'),\n
-        result = {};\n
-      result[input.getAttribute(\'name\')] = input.value;\n
-      return result;\n
-    });\n
-\n
-}(window, rJS));</string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Floatfield JS</string> </value>
         </item>
@@ -259,7 +216,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>romain</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -273,7 +230,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>937.51520.38687.48861</string> </value>
+                <value> <string>949.15478.31551.48810</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -291,8 +248,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1412082125.19</float>
-                        <string>GMT</string>
+                        <float>1455899205.51</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

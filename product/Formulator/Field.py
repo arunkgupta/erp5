@@ -172,6 +172,8 @@ class Field:
       else:
         return '%s.%s:record' % (self.field_record, self.id)
 
+    security.declareProtected('Access contents information',
+                              'generate_subfield_key')
     def generate_subfield_key(self, id, validation=0, key=None):
       """Generate the key Silva uses to render a sub field.
          Added key parameter for ERP5 in order to be compatible with listbox/matrixbox
@@ -387,6 +389,7 @@ class Field:
       """
       return self.widget.render_dict(self, value)
 
+    security.declareProtected('View', 'render_from_request')
     def render_from_request(self, REQUEST, key_prefix=None):
         """Convenience method; render the field widget from REQUEST
         (unvalidated data), or default if no raw data is found.
@@ -554,7 +557,7 @@ class ZMIField(
                 getattr(self, method_name)(values[key])
 
 
-    security.declareProtected('Change Formulator Forms', 'manage_beforeDelete')
+    security.declarePrivate('manage_beforeDelete')
     def manage_beforeDelete(self, item, container):
         """Remove name from list if object is deleted.
         """
@@ -562,7 +565,7 @@ class ZMIField(
         if hasattr(item.aq_explicit, 'is_field'):
             container.field_removed(item.id)
 
-    security.declareProtected('Change Formulator Forms', 'manage_afterAdd')
+    security.declarePrivate('manage_afterAdd')
     def manage_afterAdd(self, item, container):
         """What happens when we add a field.
         """

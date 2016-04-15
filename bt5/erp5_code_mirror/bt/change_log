@@ -1,3 +1,36 @@
+2015-05-08 arnaud.fontaine
+* Cosmetic.
+
+2015-05-08 arnaud.fontaine
+* Use HTML <textarea> rather than dirty JS hacks.
+
+2015-05-08 arnaud.fontaine
+* 'viewportMargin: Infinity' is too slow with files with > 1000 lines.
+
+2015-05-08 arnaud.fontaine
+* Rename 'edit' addon to 'cm_edit' to prevent conflict with ERP5 'edit()' method preventing update of the bt5.
+
+2015-05-08 arnaud.fontaine
+* Allow saving with C-s in the ZMI.
+
+2015-04-23 arnaud.fontaine
+* Add support for the ZMI.
+
+2015-01-22 arnaud.fontaine
+* Gutter and source code separator line was not displayed because of erp5.css (df7eb0f).
+
+2015-01-22 arnaud.fontaine
+* Add syntax checking in Merge view as well.
+
+2015-01-22 arnaud.fontaine
+* Update CodeMirror to 4.11.
+
+2015-01-16 arnaud.fontaine
+* Add linter to check Python syntax in real time and display warnings/errors icons next to the line number (likewise Ace Editor implementation).
+
+2015-01-16 arnaud.fontaine
+* Remove 'title' attribute of editor field.
+
 2014-12-26 arnaud.fontaine
 * Saving (Ctrl-s) was not working when using Merge view.
 

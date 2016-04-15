@@ -25,6 +25,8 @@ Patch CookieCrumbler to prevent came_from to appear in the URL
 when ERP5 runs in "require_referer" mode.
 """
 
+from AccessControl.SecurityInfo import ClassSecurityInfo
+from App.class_init import InitializeClass
 from Products.CMFCore.CookieCrumbler import CookieCrumbler
 from Products.CMFCore.CookieCrumbler import CookieCrumblerDisabled
 from urllib import quote, unquote
@@ -42,6 +44,8 @@ class PatchedCookieCrumbler(CookieCrumbler):
     This class is only for backward compatibility.
   """
   pass
+
+security = ClassSecurityInfo()
 
 def getLoginURL(self):
     '''
@@ -68,7 +72,33 @@ def getLoginURL(self):
             return url
     return None
 
+security.declarePublic('getLoginURL')
 CookieCrumbler.getLoginURL = getLoginURL
+
+def balancer_cookie_hook(ob, req, resp):
+  """Post publishing traversal hook to automatically (un)set balancer cookie
+
+  If authenticated, then cookie is set to use the same zope on next request,
+  for a better use of caches. Otherwise, if anonymous, expire cookie so that
+  the balancer redirects us on any zope.
+
+  XXX: Because we only have persistent traversal hooks and we don't want to
+       complicate code with automatic upgrade, this one is implemented by
+       pluging into CookieCrumbler, although what they are quite unrelated.
+  """
+  balancer_cookie = req.get('HTTP_X_BALANCER_CURRENT_COOKIE')
+  if balancer_cookie:
+    try:
+      path = ob.aq_parent.absolute_url_path()
+    except AttributeError:
+      path = '/'
+    if req['AUTHENTICATED_USER'].getUserName() == 'Anonymous User':
+      if balancer_cookie in req.cookies:
+        resp.expireCookie(balancer_cookie, path=path)
+    else:
+      server_id = req['HTTP_X_BALANCER_CURRENT_SERVER']
+      if server_id != req.cookies.get(balancer_cookie):
+        resp.setCookie(balancer_cookie, server_id, path=path);
 
 def modifyRequest(self, req, resp):
   """Copies cookie-supplied credentials to the basic auth fields.
@@ -82,6 +112,8 @@ def modifyRequest(self, req, resp):
       or not req['REQUEST_METHOD'] in ('HEAD', 'GET', 'PUT', 'POST')
       or req.environ.has_key('WEBDAV_SOURCE_PORT')):
       raise CookieCrumblerDisabled
+
+  req.post_traverse(balancer_cookie_hook, (self, req, resp))
 
   # attempt may contain information about an earlier attempt to
   # authenticate using a higher-up cookie crumbler within the
@@ -150,3 +182,6 @@ def credentialsChanged(self, user, name, pw):
   method( resp, self.auth_cookie, quote( ac ) )
 
 CookieCrumbler.credentialsChanged = credentialsChanged
+
+CookieCrumbler.security = security
+InitializeClass(CookieCrumbler)

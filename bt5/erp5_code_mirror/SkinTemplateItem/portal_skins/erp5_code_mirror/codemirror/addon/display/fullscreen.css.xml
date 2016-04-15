@@ -7,6 +7,10 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>__name__</string> </key>
             <value> <string>fullscreen.css</string> </value>
         </item>
@@ -21,16 +25,6 @@
             <value>
               <dictionary/>
             </value>
-        </item>
-        <item>
-            <key> <string>raw</string> </key>
-            <value> <string>.CodeMirror-fullscreen {\n
-  position: fixed;\n
-  top: 0; left: 0; right: 0; bottom: 0;\n
-  height: auto;\n
-  z-index: 9;\n
-}\n
-</string> </value>
         </item>
       </dictionary>
     </pickle>

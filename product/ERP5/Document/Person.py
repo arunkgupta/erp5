@@ -80,51 +80,35 @@ class Person(Node, LoginAccountProviderMixin, EncryptedPasswordMixin):
                       , PropertySheet.Task
                       )
 
-    def _setTitle(self, value):
-      """
-        Here we see that we must define a notion
-        of priority in the way fields are updated
-      """
-      if value != self.getTitle():
-        self.title = value
-
     security.declareProtected(Permissions.AccessContentsInformation,
                               'getTitle')
     def getTitle(self, **kw):
       """
         Returns the title if it exists or a combination of
-        first name and last name
+        first name, middle name and last name
       """
-      if self.title == '':
-        name_list = []
-        if self.getFirstName() not in (None, ''):
-          name_list.append(self.getFirstName())
-        if self.getMiddleName() not in (None, ''):
-          name_list.append(self.getMiddleName())
-        if self.getLastName() not in (None, ''):
-          name_list.append(self.getLastName())
-        return ' '.join(name_list)
-      else:
-        return self.title
+      if not self.title:
+        title = ' '.join([x for x in (self.getFirstName(),
+                                      self.getMiddleName(),
+                                      self.getLastName()) if x])
+        if title:
+          return title
+      return super(Person, self).getTitle(**kw)
 
     security.declareProtected(Permissions.AccessContentsInformation,
                               'getTranslatedTitle')
     def getTranslatedTitle(self, **kw):
       """
         Returns the title if it exists or a combination of
-        first name and last name
+        first name, middle name and last name
       """
-      if self.title == '':
-        name_list = []
-        if self.getTranslatedFirstName(**kw) not in (None, ''):
-          name_list.append(self.getTranslatedFirstName(**kw))
-        if self.getTranslatedMiddleName(**kw) not in (None, ''):
-          name_list.append(self.getTranslatedMiddleName(**kw))
-        if self.getTranslatedLastName(**kw) not in (None, ''):
-          name_list.append(self.getTranslatedLastName(**kw))
-        return ' '.join(name_list)
-      else:
-        return self.title
+      if not self.title:
+        title = ' '.join([x for x in (self.getTranslatedFirstName(**kw),
+                                      self.getTranslatedMiddleName(**kw),
+                                      self.getTranslatedLastName(**kw)) if x])
+        if title:
+          return title
+      return super(Person, self).getTranslatedTitle(**kw)
 
     security.declareProtected(Permissions.AccessContentsInformation,
                               'title_or_id')
@@ -134,27 +118,10 @@ class Person(Node, LoginAccountProviderMixin, EncryptedPasswordMixin):
     security.declareProtected(Permissions.AccessContentsInformation,
                               'hasTitle')
     def hasTitle(self):
-      return not not self.getTitle()
-
-    def _setFirstName(self, value):
-      """
-        Update Title if first_name is modified
-      """
-      self._baseSetFirstName(value)
-      name_list = []
-      if self.getFirstName(): name_list.append(self.getFirstName())
-      if self.getLastName(): name_list.append(self.getLastName())
-      if name_list: self._setTitle(' '.join(name_list))
-
-    def _setLastName(self, value):
-      """
-        Update Title if last_name is modified
-      """
-      self._baseSetLastName(value)
-      name_list = []
-      if self.getFirstName(): name_list.append(self.getFirstName())
-      if self.getLastName(): name_list.append(self.getLastName())
-      if name_list: self._setTitle(' '.join(name_list))
+      return self.hasFirstName() or \
+          self.hasLastName() or \
+          self.hasMiddleName() or \
+          self._baseHasTitle()
 
     def _setReference(self, value):
       """

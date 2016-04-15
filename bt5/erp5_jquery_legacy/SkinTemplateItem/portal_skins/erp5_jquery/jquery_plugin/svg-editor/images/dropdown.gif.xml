@@ -7,6 +7,10 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>_EtagSupport__etag</string> </key>
             <value> <string>ts80005893.56</string> </value>
         </item>
@@ -17,10 +21,6 @@
         <item>
             <key> <string>content_type</string> </key>
             <value> <string>image/gif</string> </value>
-        </item>
-        <item>
-            <key> <string>data</string> </key>
-            <value> <string encoding="base64">R0lGODlhBwAEAIAAAP///wAAACH5BAEAAAAALAAAAAAHAAQAAAIIjB+ACWoNGSgAOw==</string> </value>
         </item>
         <item>
             <key> <string>height</string> </key>

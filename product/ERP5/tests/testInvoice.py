@@ -30,11 +30,11 @@
   Tests invoice creation from simulation.
 
 """
-import sys, zipfile, xml.dom.minidom
-import StringIO
+import xml.dom.minidom
+import zipfile
 
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
-from Products.ERP5Type.tests.utils import FileUpload, DummyMailHost
+from Products.ERP5Type.tests.utils import FileUpload
 from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod
 from Products.ERP5OOo.OOoUtils import OOoParser
 from AccessControl.SecurityManagement import newSecurityManager
@@ -124,15 +124,20 @@ class TestInvoiceMixin(TestPackingListMixin):
             'use/trade/tax',
         )
 
-
   def afterSetUp(self):
+    self.createUser('test_user',
+                    ['Assignee', 'Assignor', 'Member',
+                     'Associate', 'Auditor', 'Author'])
+    self.createUser('manager', ['Manager'])
+    self.login('manager')
     self.createCategories()
     self.validateRules()
     self.createBusinessProcess()
-    self.login()
+    self.login('test_user')
 
   def beforeTearDown(self):
     self.abort()
+    self.login('manager')
     super(TestInvoiceMixin, self).beforeTearDown()
     for folder in (self.portal.accounting_module,
                    self.portal.organisation_module,
@@ -143,14 +148,6 @@ class TestInvoiceMixin(TestPackingListMixin):
                    self.portal.portal_simulation,):
       folder.manage_delObjects([x for x in folder.objectIds() if x not in ('organisation_1','organisation_2','ppl_1','ppl_2')])
     self.tic()
-
-  def login(self):
-    """login, without manager role"""
-    uf = self.getPortal().acl_users
-    uf._doAddUser('test_invoice_user', '', ['Assignee', 'Assignor', 'Member',
-                               'Associate', 'Auditor', 'Author'], [])
-    user = uf.getUserById('test_invoice_user').__of__(uf)
-    newSecurityManager(None, user)
 
   def stepCreateSaleInvoiceTransactionRule(self, sequence, **kw) :
     pass # see createBusinessProcess
@@ -183,7 +180,7 @@ class TestInvoiceMixin(TestPackingListMixin):
         if not account_module.has_key(account_id):
           account = account_module.newContent(account_id, gap=account_gap,
                                               account_type=account_type)
-          portal.portal_workflow.doActionFor(account, 'validate_action')
+          account.validate()
       for line_id, line_source_id, line_destination_id, line_ratio in \
           self.transaction_line_definition_list:
         trade_model_path = business_process.newContent(
@@ -753,31 +750,6 @@ class TestInvoiceMixin(TestPackingListMixin):
     new_invoice.edit(start_date=self.datetime,
                  stop_date=self.datetime+1)
 
-  def stepRemoveDateMovementGroupForTransactionBuilder(self, sequence=None,
-            sequence_list=None, **kw):
-    """
-    Remove DateMovementGroup
-    """
-    portal = self.getPortal()
-    builder = portal.portal_deliveries.sale_invoice_transaction_builder
-    delivery_movement_group_list = builder.getDeliveryMovementGroupList()
-    uf = self.getPortal().acl_users
-    uf._doAddUser('admin', '', ['Manager'], [])
-    user = uf.getUserById('admin').__of__(uf)
-    newSecurityManager(None, user)
-    for movement_group in delivery_movement_group_list:
-      if movement_group.getPortalType() == 'Property Movement Group':
-        # it contains 'start_date' and 'stop_date' only, so we remove
-        # movement group itself.
-        builder.deleteContent(movement_group.getId())
-    builder.newContent(
-      portal_type = 'Parent Explanation Movement Group',
-      collect_order_group='delivery',
-      int_index=len(delivery_movement_group_list)+1
-      )
-    user = uf.getUserById('test_invoice_user').__of__(uf)
-    newSecurityManager(None, user)
-
   def stepEditInvoice(self, sequence=None, sequence_list=None, **kw):
     """Edit the current invoice, to trigger updateSimulation."""
     invoice = sequence.get('invoice')
@@ -908,7 +880,6 @@ class TestInvoiceMixin(TestPackingListMixin):
       start_date=self.datetime + 15,
       stop_date=self.datetime + 25,
       **kw)
-    pass
 
   def stepUnifyStartDateWithDecisionInvoice(self, sequence=None,
                                             sequence_list=None):
@@ -1730,7 +1701,7 @@ class TestInvoice(TestInvoiceMixin):
         self.resource_portal_type).newContent(
                     portal_type=self.resource_portal_type,
                     title='Resource',)
-    file_data = FileUpload(__file__, 'rb')
+    file_data = FileUpload(__file__)
     client = self.portal.organisation_module.newContent(
                               portal_type='Organisation', title='Client')
     client_logo = client.newContent(portal_type='Embedded File',
@@ -2572,9 +2543,6 @@ class TestSaleInvoice(TestSaleInvoiceMixin, TestInvoice, ERP5TypeTestCase):
   """
   quiet = 0
 
-  # fix inheritance
-  login = TestInvoiceMixin.login
-
   @UnrestrictedMethod
   def createCategories(self):
     TestPackingListMixin.createCategories(self)
@@ -2607,6 +2575,72 @@ class TestSaleInvoice(TestSaleInvoiceMixin, TestInvoice, ERP5TypeTestCase):
       """)
     sequence_list.play(self, quiet=quiet)
 
+  def stepCreateCurrency(self, sequence):
+    currency = self.portal.currency_module.newContent(
+      portal_type="Currency", title="Currency",
+      base_unit_quantity=0.01)
+    sequence.edit(currency=currency)
+
+  def stepCheckInvoiceWithBadPrecision(self, sequence):
+    portal = self.portal
+    vendor = sequence.get('vendor')
+    invoice = portal.accounting_module.newContent(
+      portal_type="Sale Invoice Transaction",
+      specialise=self.business_process,
+      source_section_value=vendor,
+      start_date=self.datetime,
+      price_currency_value=sequence.get('currency'),
+      destination_section_value=sequence.get('client1'),
+      source_value=vendor)
+    resource = self.portal.getDefaultModule(
+        self.resource_portal_type).newContent(
+                    portal_type=self.resource_portal_type,
+                    title='Resource',
+                    sale_supply_line_source_account="account_module/sale",
+                    product_line='apparel')
+    product_line = invoice.newContent(portal_type="Invoice Line",
+      resource_value=resource, quantity=1, price=0.014)
+    product_line = invoice.newContent(portal_type="Invoice Line",
+      resource_value=resource, quantity=1, price=0.014)
+    self.tic()
+    invoice.plan()
+    invoice.confirm()
+    self.tic()
+    invoice.start()
+    self.tic()
+    movement_list = invoice.getMovementList(
+        portal_type=invoice.getPortalAccountingMovementTypeList())
+    receivable_line = [m for m in movement_list \
+      if m.getSourceValue().getAccountType() == \
+        "asset/receivable"][0]
+    self.assertEquals(0.03, receivable_line.getSourceDebit())
+    data = invoice.Invoice_getODTDataDict()
+    precision = invoice.getQuantityPrecisionFromResource(
+      invoice.getResource())
+    self.assertEquals(round(data['total_price'], precision),
+      receivable_line.getSourceDebit())
+    vat_line = [m for m in movement_list \
+      if m.getSourceValue().getAccountType() == \
+        "liability/payable/collected_vat"][0]
+    self.assertEquals(0.0, vat_line.getSourceDebit())
+    income_line = [m for m in movement_list \
+      if m.getSourceValue().getAccountType() == \
+        "income"][0]
+    self.assertEquals(0.03, income_line.getSourceCredit())
+
+  def test_AccountingTransaction_roundDebitCredit(self):
+    """
+      Check that with two invoice lines with total price equal 0.14,
+      the receivable line will be 0.03 and vat line 0
+    """
+    sequence_list = SequenceList()
+    sequence_list.addSequenceString("""
+      stepCreateCurrency
+      stepCreateEntities
+      stepCheckInvoiceWithBadPrecision
+    """)
+    sequence_list.play(self)
+
   def test_02_TwoInvoicesFromTwoPackingList(self, quiet=quiet):
     """
     This test was created for the following bug:
@@ -2633,7 +2667,6 @@ class TestSaleInvoice(TestSaleInvoiceMixin, TestInvoice, ERP5TypeTestCase):
         stepInvoiceBuilderAlarm
         stepTic
         stepCheckTwoInvoices
-        stepRemoveDateMovementGroupForTransactionBuilder
         stepStartTwoInvoices
         stepTic
         stepInvoiceBuilderAlarm
@@ -3534,6 +3567,43 @@ class TestSaleInvoice(TestSaleInvoiceMixin, TestInvoice, ERP5TypeTestCase):
       self.tic()
     self.assertEqual('solved', packing_list.getCausalityState())
     self.assertEqual('solved', invoice.getCausalityState())
+
+  def test_19_SimpleInvoiceModifyArrow(self):
+    """
+    Check we can modify arrow on an invoice without having building issues
+    of transaction lines
+    """
+    sequence_list = SequenceList()
+    for base_sequence in (self.PACKING_LIST_DEFAULT_SEQUENCE, ) :
+      sequence_list.addSequenceString(
+        base_sequence +
+      """
+        stepSetReadyPackingList
+        stepTic
+        stepStartPackingList
+        stepCheckInvoicingRule
+        stepTic
+        stepInvoiceBuilderAlarm
+        stepTic
+        stepCheckInvoiceBuilding
+      """)
+    sequence_list.play(self)
+    sequence = sequence_list.getSequenceList()[0]
+    invoice = sequence.get("invoice")
+    self.assertEqual("confirmed", invoice.getSimulationState())
+    self.assertEqual("solved", invoice.getCausalityState())
+    self.portal.portal_workflow.doActionFor(invoice, "start_action")
+    other_client = sequence.get("organisation3")
+    invoice.setDestinationSectionValue(other_client)
+    self.tic()
+    self.assertEqual("diverged", invoice.getCausalityState())
+    self.assertEqual(set([("411", -65714.22),
+                         ("44571", 10769.22),
+                         ("70712", 54945.00)]),
+                     set([(x.getSourceValue().getGapId(),
+                           x.getQuantity()) for x in \
+                           invoice.objectValues(
+                    portal_type="Sale Invoice Transaction Line")]))
 
 class TestPurchaseInvoice(TestInvoice, ERP5TypeTestCase):
   """Tests for purchase invoice.

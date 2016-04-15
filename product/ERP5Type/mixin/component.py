@@ -32,11 +32,13 @@
 from __future__ import absolute_import
 
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5.mixin.property_recordable import PropertyRecordableMixin
 from Products.ERP5Type import Permissions
 from Products.ERP5Type.Base import Base
 from Products.ERP5Type.Accessor.Constant import PropertyGetter as ConstantGetter
 from Products.ERP5Type.ConsistencyMessage import ConsistencyMessage
+from zExceptions import Forbidden
 
 from zLOG import LOG, INFO
 
@@ -289,6 +291,8 @@ class ComponentMixin(PropertyRecordableMixin, Base):
     """
     self.dav__init(REQUEST, RESPONSE)
     self.dav__simpleifhandler(REQUEST, RESPONSE, refresh=1)
+    if REQUEST.environ['REQUEST_METHOD'] != 'PUT':
+      raise Forbidden, 'REQUEST_METHOD should be PUT.'
 
     text_content = REQUEST.get('BODY')
     if text_content is None:
@@ -399,3 +403,5 @@ class ComponentMixin(PropertyRecordableMixin, Base):
     rev = historicalRevision(self, serial)
 
     return rev.getTextContent()
+
+InitializeClass(ComponentMixin)

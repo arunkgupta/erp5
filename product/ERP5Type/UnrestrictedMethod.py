@@ -26,6 +26,7 @@
 #
 ##############################################################################
 
+from contextlib import contextmanager
 from AccessControl.User import UnrestrictedUser
 from AccessControl.SpecialUsers import system
 from AccessControl.SecurityManagement import getSecurityManager, \
@@ -64,10 +65,24 @@ def UnrestrictedMethod(function):
 
   This method is dangerous. Enough said. Be careful.
   """
-  return lambda *args, **kw: unrestricted_apply(function, args, kw)
+  def unrestricted_apply(*args, **kw):
+    with super_user():
+      return function(*args, **kw)
+  return unrestricted_apply
 
 def unrestricted_apply(function, args=(), kw={}): # XXX-JPS: naming
     """Function to bypass all security checks
+
+    This function is as dangerous as 'UnrestrictedMethod' decorator. Read its
+    docstring for more information. Never use this, until you are 100% certain
+    that you have no other way.
+    """
+    with super_user():
+      return function(*args, **kw)
+
+@contextmanager
+def super_user():
+    """Context manager to bypass all security checks
 
     This function is as dangerous as 'UnrestrictedMethod' decorator. Read its
     docstring for more information. Never use this, until you are 100% certain
@@ -99,7 +114,7 @@ def unrestricted_apply(function, args=(), kw={}): # XXX-JPS: naming
                                   role_list, user.getDomains()).__of__(uf)
     newSecurityManager(None, super_user)
     try:
-      return apply(function, args, kw)
+      yield
     finally:
       # Make sure that the original user is back.
       setSecurityManager(security_manager)

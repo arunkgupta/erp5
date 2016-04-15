@@ -28,9 +28,9 @@
 
 import os, re, sys
 
-if 1:
+if sys.version_info[:3] < (2, 7, 9):
     # Speed up email parsing (see also http://bugs.python.org/issue1243730)
-    from email import parser, feedparser
+    from email import feedparser
 
     NLCRE_crack_split = feedparser.NLCRE_crack.split
     def push(self, data):
@@ -61,7 +61,9 @@ if 1:
         self.pushlines(lines)
     feedparser.BufferedSubFile.push = push
 
-    FeedParser = feedparser.FeedParser
+if 1:
+    from email import parser
+    from email.feedparser import FeedParser
     def parse(self, fp, headersonly=False):
         """Create a message structure from the data in a file.
 
@@ -100,7 +102,9 @@ def patch_linecache():
     ipdb does not pass module_globals to getlines()...
     """
     m = frame.f_globals['__name__']
-    if m == 'linecache':
+    # 'linecache' or 'IPython.utils.ulinecache' (may be renamed/moved in
+    # IPython so just check the presence of 'linecache'...)
+    if isinstance(m, str) and 'linecache' in m:
       frame = frame.f_back
       m = frame.f_globals['__name__']
     if m == 'IPython.core.debugger':

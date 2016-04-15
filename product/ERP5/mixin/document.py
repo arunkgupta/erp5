@@ -28,6 +28,7 @@
 ##############################################################################
 from Products.CMFCore.utils import getToolByName
 from AccessControl import ClassSecurityInfo, Unauthorized
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions
 from OFS.Image import Pdata
 from cStringIO import StringIO
@@ -84,7 +85,8 @@ class DocumentMixin:
     if LOCK_PERMISSION_KEY in transaction_variable:
       del transaction_variable[LOCK_PERMISSION_KEY]
     return result
-
+  
+  security.declareProtected(Permissions.AccessContentsInformation, 'getFailsafeConversion')
   def getFailsafeConversion(self, **kw):
     """
       Return a failure resistent conversion of a document
@@ -144,3 +146,5 @@ class DocumentMixin:
     By default it doens't
     """
     return False
+
+InitializeClass(DocumentMixin)

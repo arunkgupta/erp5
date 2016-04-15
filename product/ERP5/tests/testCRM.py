@@ -158,19 +158,17 @@ class TestCRM(BaseTestCRM):
     for ptype in [x for x in self.portal.getPortalEventTypeList() if x !=
         'Acknowledgement']:
       # incoming
-      ticket.Ticket_newEvent(direction='incoming',
-                             portal_type=ptype,
+      ticket.Ticket_newEvent(portal_type=ptype,
                              title='Incoming Title',
-                             description='New Desc')
+                             event_workflow_action='deliver')
       self.tic()
       new_event, = ticket.getFollowUpRelatedValueList(portal_type=ptype)
-      self.assertEqual('stopped', new_event.getSimulationState())
+      self.assertEqual('delivered', new_event.getSimulationState())
 
       # outgoing
-      ticket.Ticket_newEvent(direction='outgoing',
-                                        portal_type=ptype,
-                                        title='Outgoing Title',
-                                        description='New Desc')
+      ticket.Ticket_newEvent(portal_type=ptype,
+                             title='Outgoing Title',
+                             event_workflow_action='plan')
       self.tic()
       new_event, = [event for event in ticket.getFollowUpRelatedValueList(portal_type=ptype) if\
                    event.getTitle() == 'Outgoing Title']
@@ -183,8 +181,7 @@ class TestCRM(BaseTestCRM):
     self.portal.event_module.manage_permission('Add portal content', [], 0)
     ticket.Ticket_newEvent(portal_type='Letter',
                            title='New Title',
-                           description='New Desc',
-                           direction='incoming')
+                           event_workflow_action='plan')
 
   def checkCreateRelatedEventSelectionParamsOnPersonModule(self, direction):
     # create related event from selected persons.
@@ -1114,12 +1111,6 @@ class TestCRMMailSend(BaseTestCRM):
     # content type is kept
     self.assertEqual(event.getContentType(), 'text/html')
 
-    # The getTextContent() gets the content from the file data instead the
-    # Attribute text_content.
-    self.assertTrue(event.hasFile())
-    self.assertEqual(event.text_content, text_content)
-    text_content_from_data = '<html><body>Hello<br />World</body></html>'
-    self.assertEqual(event.getTextContent(), text_content_from_data)
     last_message = self.portal.MailHost._last_message
     self.assertNotEquals((), last_message)
     mfrom, mto, messageText = last_message
@@ -1176,8 +1167,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1223,8 +1214,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1269,8 +1260,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1315,8 +1306,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1362,8 +1353,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1404,8 +1395,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='incoming')
+                           text_content='Buy this now!',
+                           event_workflow_action='deliver')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1419,7 +1410,7 @@ class TestCRMMailSend(BaseTestCRM):
                                response_workflow_action='send',
                                )
 
-    self.assertEqual(event.getSimulationState(), "stopped")
+    self.assertEqual(event.getSimulationState(), "delivered")
 
     # answer event must have been created
     self.assertEqual(len(self.portal.event_module), 2)
@@ -1460,8 +1451,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()
@@ -1518,8 +1509,8 @@ class TestCRMMailSend(BaseTestCRM):
     # Create a event
     ticket.Ticket_newEvent(portal_type='Mail Message',
                            title='Our new product',
-                           description='Buy this now!',
-                           direction='outgoing')
+                           text_content='Buy this now!',
+                           event_workflow_action='plan')
 
     # Set sender and attach a document to the event.
     event, = self.portal.event_module.objectValues()

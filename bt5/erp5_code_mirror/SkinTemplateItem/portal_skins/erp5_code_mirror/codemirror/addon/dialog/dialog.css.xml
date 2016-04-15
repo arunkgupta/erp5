@@ -7,6 +7,10 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>__name__</string> </key>
             <value> <string>dialog.css</string> </value>
         </item>
@@ -21,42 +25,6 @@
             <value>
               <dictionary/>
             </value>
-        </item>
-        <item>
-            <key> <string>raw</string> </key>
-            <value> <string>.CodeMirror-dialog {\n
-  position: absolute;\n
-  left: 0; right: 0;\n
-  background: white;\n
-  z-index: 15;\n
-  padding: .1em .8em;\n
-  overflow: hidden;\n
-  color: #333;\n
-}\n
-\n
-.CodeMirror-dialog-top {\n
-  border-bottom: 1px solid #eee;\n
-  top: 0;\n
-}\n
-\n
-.CodeMirror-dialog-bottom {\n
-  border-top: 1px solid #eee;\n
-  bottom: 0;\n
-}\n
-\n
-.CodeMirror-dialog input {\n
-  border: none;\n
-  outline: none;\n
-  background: transparent;\n
-  width: 20em;\n
-  color: inherit;\n
-  font-family: monospace;\n
-}\n
-\n
-.CodeMirror-dialog button {\n
-  font-size: 70%;\n
-}\n
-</string> </value>
         </item>
       </dictionary>
     </pickle>

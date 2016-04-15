@@ -121,6 +121,18 @@
                           <string>specialise_title</string>
                           <string>Distributor</string>
                         </tuple>
+                        <tuple>
+                          <string>creation_date</string>
+                          <string>Creation Date</string>
+                        </tuple>
+                        <tuple>
+                          <string>int_index</string>
+                          <string>Priority</string>
+                        </tuple>
+                        <tuple>
+                          <string>test_node</string>
+                          <string>Nodes Quantity</string>
+                        </tuple>
                       </list>
                     </value>
                 </item>
@@ -159,7 +171,7 @@
                       <list>
                         <tuple>
                           <string>Date</string>
-                          <string> asc</string>
+                          <string>asc</string>
                         </tuple>
                       </list>
                     </value>

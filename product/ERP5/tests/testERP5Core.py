@@ -28,8 +28,11 @@
 ##############################################################################
 
 import unittest
-from hashlib import md5
 import pprint
+import httplib
+import urlparse
+import base64
+import urllib
 
 from AccessControl.SecurityManagement import newSecurityManager
 from Testing import ZopeTestCase
@@ -228,7 +231,8 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
                            {'title': 'Undo', 'id': 'undo'}],
                 'object': [],
                 'object_action': [{'id': 'post_query', 'title': 'Post a Query'}],
-                'object_jump': [{'id': 'jump_query', 'title': 'Queries'}],
+                'object_jump': [{'id': 'jump_related_object', 'title': 'Related Objects'},
+                                {'id': 'jump_query', 'title': 'Queries'}],
                 'object_search': [{'title': 'Search', 'id': 'search'}],
                 'object_sort': [{'title': 'Sort', 'id': 'sort_on'}],
                 'object_ui': [{'title': 'Modify UI', 'id': 'list_ui'}],
@@ -248,6 +252,7 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
     expected = {'folder': [],
                 'global': [],
                 'object': [],
+                'object_jump': [{'id': 'jump_related_object', 'title': 'Related Objects'}],
                 'object_search': [{'title': 'Search', 'id': 'search'}],
                 'object_sort': [{'title': 'Sort', 'id': 'sort_on'}],
                 'object_ui': [{'title': 'Modify UI', 'id': 'list_ui'}],
@@ -263,6 +268,7 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
     expected = {'folder': [],
                 'global': [],
                 'object': [],
+                'object_jump': [{'id': 'jump_related_object', 'title': 'Related Objects'}],
                 'object_search': [{'title': 'Search', 'id': 'search'}],
                 'object_sort': [{'title': 'Sort', 'id': 'sort_on'}],
                 'object_ui': [{'title': 'Modify UI', 'id': 'list_ui'}],
@@ -335,47 +341,115 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
 
   def test_03_getDefaultModule(self, quiet=quiet, run=run_all_test):
     """
-    test getDefaultModule method
+    test getDefaultModule(|Id|Value) methods
     """
     if not run:
       return
-    portal_id = self.getPortal().getId()
-    object_portal_type = ' '.join([part.capitalize() for part \
-                                    in portal_id.split('_')])
-    module_portal_type='%s Module' % object_portal_type
-    portal_skins_folder='erp5_unittest'
-    object_title=object_portal_type
-    module_id="%s_module" % portal_id
-    module_title='%ss' % object_portal_type
+    portal = self.portal
+    portal_id = portal.getId()
+    object_portal_type = ' '.join(
+      part.capitalize() for part in portal_id.split('_')
+    )
+    module_portal_type = object_portal_type + ' Module'
+    portal_skins_folder = 'erp5_unittest'
+    module_id = portal_id + "_module"
 
     # Create module for testing
-    self.assertFalse(self.portal._getOb(module_id, None) is not None)
-    self.assertEqual(self.portal.portal_skins._getOb(portal_skins_folder, None),
-                     None)
-    self.assertEqual(self.portal.portal_types.getTypeInfo(module_portal_type),
-                     None)
-    self.assertEqual(self.portal.portal_types.getTypeInfo(object_portal_type),
-                     None)
-    self.portal.ERP5Site_createModule(module_portal_type=module_portal_type,
-                                      portal_skins_folder=portal_skins_folder,
-                                      object_portal_type=object_portal_type,
-                                      object_title=object_title,
-                                      module_id=module_id,
-                                      module_title=module_title)
+    self.assertEqual(portal._getOb(module_id, None), None)
+    self.assertEqual(
+      portal.portal_skins._getOb(portal_skins_folder, None),
+      None,
+    )
+    self.assertEqual(
+      portal.portal_types.getTypeInfo(module_portal_type),
+      None,
+    )
+    self.assertEqual(
+      portal.portal_types.getTypeInfo(object_portal_type),
+      None,
+    )
+    portal.ERP5Site_createModule(
+      module_portal_type=module_portal_type,
+      portal_skins_folder=portal_skins_folder,
+      object_portal_type=object_portal_type,
+      object_title=object_portal_type,
+      module_id=module_id,
+      module_title=object_portal_type + 's',
+    )
+    module = portal._getOb(module_id)
 
     # Test
-    self.assertEqual(
+
+    for portal_type in (object_portal_type, module_portal_type):
+      self.assertEqual(
+        module,
+        portal.getDefaultModule(portal_type),
+      )
+      self.assertEqual(
+        module,
+        portal.getDefaultModuleValue(portal_type),
+      )
+      self.assertEqual(
         module_id,
-        self.portal.getDefaultModule(object_portal_type).getId())
-    self.assertEqual(
-        module_portal_type,
-        self.portal.getDefaultModule(object_portal_type).getPortalType())
-    self.assertEqual(
-        module_id,
-        self.portal.getDefaultModule(module_portal_type).getId())
-    self.assertEqual(
-        module_portal_type,
-        self.portal.getDefaultModule(module_portal_type).getPortalType())
+        portal.getDefaultModuleId(portal_type),
+      )
+
+    default = object()
+    for portal_type in (
+          object_portal_type + ' DoesNotExist',
+          module_portal_type + ' DoesNotExist',
+        ):
+      self.assertRaises(
+        ValueError,
+        portal.getDefaultModule,
+        portal_type,
+      )
+      # XXX: this behaviour may not be intentional, and differs a lot from how
+      # typical default values behave.
+      self.assertEqual(
+        module,
+        portal.getDefaultModule(portal_type, default=module_id)
+      )
+      self.assertIs(
+        None,
+        portal.getDefaultModule(portal_type, default=None)
+      )
+
+      self.assertIs(
+        default,
+        portal.getDefaultModuleValue(portal_type, default=default),
+      )
+      self.assertEqual(
+        default,
+        portal.getDefaultModuleId(portal_type, default=default),
+      )
+
+    # XXX: only_visible not testable here, because manager can see hidden
+    # allowed content types.
+    '''
+    module_portal_type_value = portal.portal_types[module_portal_type]
+    module_portal_type_value.setTypeHiddenContentTypeList(
+      module_portal_type_value.getTypeAllowedContentTypeList()
+    )
+    for portal_type in (object_portal_type, module_portal_type):
+      # Note: getDefaultModule does not support this semantic.
+      self.assertIs(
+        default,
+        portal.getDefaultModuleValue(
+          portal_type,
+          default=default,
+          only_visible=True,
+        ),
+      )
+      self.assertIs(
+        default,
+        portal.getDefaultModuleId(
+          portal_type,
+          default=default,
+          only_visible=True,
+        ),
+      )
+    '''
 
   def test_catalog_with_very_long_login_name(self, quiet=quiet, run=run_all_test):
     """Make sure that user with very long login name can find his document by catalog"""
@@ -439,7 +513,7 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
     self.assertEqual(0, person.getRelationCountForDeletion())
     def delete(assert_deleted, obj):
       redirect = self._Folder_delete(obj)
-      self.assertTrue(('Sorry, 1 item is in use.', 'Deleted.')[assert_deleted]
+      self.assertTrue((urllib.quote('Sorry, 1 item is in use.'), 'Deleted.')[assert_deleted]
                       in redirect, redirect)
       self.tic()
     delete(0, organisation)
@@ -468,7 +542,7 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
     document_1.manage_permission('View', [], acquire=0)
     document_1.manage_permission('Access contents information', [], acquire=0)
     redirect = self._Folder_delete(document_2)
-    self.assert_('Sorry, 1 item is in use.' in redirect, redirect)
+    self.assert_(urllib.quote('Sorry, 1 item is in use.') in redirect, redirect)
     self.assertEqual(module.objectCount(), 2)
 
   def test_getPropertyForUid(self):
@@ -515,6 +589,38 @@ class TestERP5Core(ERP5TypeTestCase, ZopeTestCase.Functional):
       # clean everything up, we don't want to mess the test environment
       self.abort()
       setSite(old_site)
+
+  def test_BasicAuthenticateDesactivated(self):
+    """Make sure Unauthorized error does not lead to Basic auth popup in browser"""
+    portal = self.getPortal()
+    # Create user account with very long login name
+    login_name = 'foo_login_name'
+    password = 'bar_password'
+    acl_users = portal.acl_users
+    acl_users._doAddUser(login_name, password, ['Member'], [])
+    user = acl_users.getUserById(login_name).__of__(acl_users)
+    # Login as the above user
+    newSecurityManager(None, user)
+    self.auth = '%s:%s' % (login_name, password)
+    self.commit()
+    self.tic()
+
+    api_scheme, api_netloc, api_path, api_query, \
+      api_fragment = urlparse.urlsplit(self.portal.absolute_url())
+
+    connection = httplib.HTTPConnection(api_netloc)
+    connection.request(
+      method='GET',
+      url='%s/Person_getPrimaryGroup' % \
+          self.portal.absolute_url(),
+      headers={
+       'Authorization': 'Basic %s' % \
+         base64.b64encode(self.auth)
+      }
+    )
+    response = connection.getresponse()
+    self.assertEqual(response.status, 401)
+    self.assertEqual(response.getheader('WWW-Authenticate'), None)
 
 def test_suite():
   suite = unittest.TestSuite()

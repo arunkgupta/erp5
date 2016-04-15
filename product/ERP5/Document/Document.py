@@ -27,23 +27,16 @@
 #
 ##############################################################################
 
-import re, sys, os
-from operator import add
+import re
 from zLOG import LOG
-from AccessControl import ClassSecurityInfo, getSecurityManager
-from AccessControl.SecurityManagement import newSecurityManager, setSecurityManager
+from AccessControl import ClassSecurityInfo
 from Acquisition import aq_base
 from Products.ERP5Type.Accessor.Constant import PropertyGetter as ConstantGetter
-from Products.ERP5Type.Globals import get_request
 from Products.CMFCore.utils import _checkPermission
 from Products.ERP5Type import Permissions, PropertySheet, interfaces
 from Products.ERP5Type.XMLObject import XMLObject
-from Products.ERP5Type.DateUtils import convertDateToHour,\
-                                number_of_hours_in_day, number_of_hours_in_year
-from Products.ERP5Type.Utils import convertToUpperCase, fill_args_from_request,\
-                                    deprecated, guessEncodingFromText
+from Products.ERP5Type.Utils import deprecated, guessEncodingFromText
 from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
-from Products.ERP5Type.Cache import getReadOnlyTransactionCache
 from Products.ERP5.Tool.ContributionTool import MAX_REPEAT
 from Products.ZSQLCatalog.SQLCatalog import Query, NegatedQuery
 from AccessControl import Unauthorized
@@ -55,7 +48,6 @@ from Products.ERP5.mixin.cached_convertable import CachedConvertableMixin
 from Products.ERP5.mixin.text_convertable import TextConvertableMixin
 from Products.ERP5.mixin.downloadable import DownloadableMixin
 from Products.ERP5.mixin.document import DocumentMixin
-from Products.ERP5.mixin.extensible_traversable import DocumentExtensibleTraversableMixin
 from Products.ERP5.mixin.crawlable import CrawlableMixin
 from Products.ERP5.mixin.discoverable import DiscoverableMixin
 from Products.ERP5.mixin.url import UrlMixin
@@ -86,6 +78,8 @@ class DocumentProxyError(Exception):pass
 
 class NotConvertedError(Exception):pass
 allow_class(NotConvertedError)
+
+from Products.ERP5.mixin.extensible_traversable import DocumentExtensibleTraversableMixin
 
 class Document(DocumentExtensibleTraversableMixin, XMLObject, UrlMixin,
                CachedConvertableMixin, CrawlableMixin, TextConvertableMixin,
@@ -319,7 +313,7 @@ class Document(DocumentExtensibleTraversableMixin, XMLObject, UrlMixin,
     text = self.getSearchableText() # XXX getSearchableText or asText ?
     return self._getSearchableReferenceList(text)
 
-  security.declareProtected(Permissions.AccessContentsInformation, 'getSearchableReferenceList')
+  security.declareProtected(Permissions.AccessContentsInformation, 'isSearchableReference')
   def isSearchableReference(self):
     """
       Determine if current document's reference can be used for searching - i.e. follows

@@ -33,8 +33,8 @@ import string
 
 from Acquisition import aq_base
 from AccessControl import ClassSecurityInfo
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions
-from Products.ERP5Type.Cache import DEFAULT_CACHE_SCOPE
 from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
 from OFS.Image import Pdata, Image as OFSImage
 from DateTime import DateTime
@@ -106,7 +106,7 @@ class CachedConvertableMixin:
     return '%s:%s:%s' % (aq_base(self).getUid(), self.getRevision(),
                          format_cache_id)
 
-  security.declareProtected(Permissions.View, 'hasConversion')
+  security.declareProtected(Permissions.AccessContentsInformation, 'hasConversion')
   def hasConversion(self, **kw):
     """
     """
@@ -170,7 +170,6 @@ class CachedConvertableMixin:
     tv[cache_id] = stored_data_dict
     cache_factory.set(cache_id, stored_data_dict)
 
-  security.declareProtected(Permissions.View, '_getConversionDataDict')
   def _getConversionDataDict(self, **kw):
     """
     """
@@ -212,7 +211,7 @@ class CachedConvertableMixin:
 
     raise KeyError, 'Conversion cache key does not exists for %r' % cache_id
 
-  security.declareProtected(Permissions.View, 'getConversion')
+  security.declareProtected(Permissions.AccessContentsInformation, 'getConversion')
   def getConversion(self, **kw):
     """
     """
@@ -225,19 +224,19 @@ class CachedConvertableMixin:
       data = str(data)
     return mime, data
 
-  security.declareProtected(Permissions.View, 'getConversionSize')
+  security.declareProtected(Permissions.AccessContentsInformation, 'getConversionSize')
   def getConversionSize(self, **kw):
     """
     """
     return self._getConversionDataDict(**kw)['size']
 
-  security.declareProtected(Permissions.View, 'getConversionDate')
+  security.declareProtected(Permissions.AccessContentsInformation, 'getConversionDate')
   def getConversionDate(self, **kw):
     """
     """
     return self._getConversionDataDict(**kw)['date']
 
-  security.declareProtected(Permissions.View, 'getConversionMd5')
+  security.declareProtected(Permissions.AccessContentsInformation, 'getConversionMd5')
   def getConversionMd5(self, **kw):
     """
     """
@@ -294,3 +293,5 @@ class CachedConvertableMixin:
       into the specified target format.
     """
     return format in self.getTargetFormatList()
+
+InitializeClass(CachedConvertableMixin)

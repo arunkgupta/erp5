@@ -89,8 +89,7 @@ class UnifySolver(AcceptSolver):
         simulation_movement_list.append(simulation_movement)
     return simulation_movement_list
 
-  # ISolver Implementation
-  def solve(self, activate_kw=None):
+  def _solve(self, activate_kw=None):
     """
     Adopt new property value to simulation movements and their deliveries,
     while keeping the original one recorded.
@@ -124,7 +123,7 @@ class UnifySolver(AcceptSolver):
           simulation_movement.setDefaultActivateParameterDict(activate_kw)
         if not simulation_movement.isPropertyRecorded(solved_property):
           simulation_movement.recordProperty(solved_property)
-        simulation_movement.setMappedProperty(solved_property, value)
+        simulation_movement.setProperty(solved_property, value)
         # XXX: would it be safe to expand by activity ?
         simulation_movement.expand('immediate')
     # Finish solving

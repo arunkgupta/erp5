@@ -46,6 +46,7 @@ from zope.i18n import interpolate
 from zope.i18n.interfaces import ITranslationDomain
 from zope.interface import implements
 from zLOG import LOG, INFO
+from zExceptions import Forbidden
 
 # Import from Localizer
 from interfaces import IMessageCatalog
@@ -276,7 +277,7 @@ class MessageCatalog(LanguageManager, ObjectManager, SimpleItem):
         as a translation for unknown messages.
         """
         if not isinstance(message, basestring):
-            raise TypeError, 'only strings can be translated.'
+            raise TypeError('only strings can be translated, not: %r' % (message,))
 
         if default is None:
             default = message
@@ -713,7 +714,9 @@ class MessageCatalog(LanguageManager, ObjectManager, SimpleItem):
     # Backwards compatibility (XXX)
     #######################################################################
 
+    security.declarePublic('hasmsg')
     hasmsg = message_exists
+    security.declarePublic('hasLS')
     hasLS = message_exists  # CMFLocalizer uses it
 
 class POFile(SimpleItem):
@@ -735,6 +738,8 @@ class POFile(SimpleItem):
     security.declareProtected('Manage messages', 'PUT')
     def PUT(self, REQUEST, RESPONSE):
         """ """
+        if REQUEST.environ['REQUEST_METHOD'] != 'PUT':
+            raise Forbidden, 'REQUEST_METHOD should be PUT.'
         body = REQUEST['BODY']
         self.po_import(self.id, body)
         RESPONSE.setStatus(204)

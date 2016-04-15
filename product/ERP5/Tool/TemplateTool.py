@@ -63,7 +63,6 @@ from base64 import decodestring
 import subprocess
 import time
 
-
 WIN = os.name == 'nt'
 
 CATALOG_UPDATABLE = object()
@@ -113,10 +112,12 @@ class TemplateTool (BaseTool):
     security.declareProtected(Permissions.ManagePortal, 'manage_overview')
     manage_overview = DTMLFile('explainTemplateTool', _dtmldir)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInstalledBusinessTemplate')
     def getInstalledBusinessTemplate(self, title, strict=False, **kw):
-      """
-        Return an installed version of business template of a certain title.
+      """Returns an installed version of business template of a given title.
 
+        Returns None if business template is not installed or has been uninstalled.
         It not "installed" business template is found, look at replaced ones.
         This is mostly usefull if we are looking for the installed business
         template in a transaction replacing an existing business template.
@@ -132,7 +133,15 @@ class TemplateTool (BaseTool):
           state = bt.getInstallationState()
           if state == 'installed':
             return bt
-          if state == 'replaced' and not strict:
+          if state == 'not_installed':
+            last_transition = bt.workflow_history \
+              ['business_template_installation_workflow'][-1]
+            if last_transition['action'] == 'uninstall': # There is not uninstalled state !
+              t = last_transition['time']
+              if last_time < t:
+                last_bt = None
+                last_time = t
+          elif state == 'replaced' and not strict:
             t = bt.workflow_history \
               ['business_template_installation_workflow'][-1]['time']
             if last_time < t:
@@ -140,6 +149,8 @@ class TemplateTool (BaseTool):
               last_time = t
       return last_bt
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInstalledBusinessTemplatesList')
     def getInstalledBusinessTemplatesList(self):
       """Deprecated.
       """
@@ -158,16 +169,22 @@ class TemplateTool (BaseTool):
           installed_bts.append(bt5)
       return installed_bts
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInstalledBusinessTemplateList')
     def getInstalledBusinessTemplateList(self):
       """Get the list of installed business templates.
       """
       return self._getInstalledBusinessTemplateList(only_title=0)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInstalledBusinessTemplateTitleList')
     def getInstalledBusinessTemplateTitleList(self):
       """Get the list of installed business templates.
       """
       return self._getInstalledBusinessTemplateList(only_title=1)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInstalledBusinessTemplateRevision')
     def getInstalledBusinessTemplateRevision(self, title, **kw):
       """
         Return the revision of business template installed with the title
@@ -178,6 +195,8 @@ class TemplateTool (BaseTool):
         return bt.getRevision()
       return None
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getBuiltBusinessTemplateList')
     def getBuiltBusinessTemplateList(self):
       """Get the list of built and not installed business templates.
       """
@@ -275,6 +294,7 @@ class TemplateTool (BaseTool):
              content_type='application/x-erp5-business-template')
       business_template.setPublicationUrl(url)
 
+    security.declareProtected(Permissions.ManagePortal, 'update')
     def update(self, business_template):
       """
         Update an existing template from its publication URL.
@@ -363,6 +383,7 @@ class TemplateTool (BaseTool):
       bt.build(no_action=True)
       return bt
 
+    security.declareProtected('Import/Export objects', 'importBase64EncodedText')
     def importBase64EncodedText(self, file_data=None, id=None, REQUEST=None,
                                 batch_mode=False, **kw):
       """
@@ -372,6 +393,7 @@ class TemplateTool (BaseTool):
       return self.importFile(import_file = import_file, id = id, REQUEST = REQUEST,
                              batch_mode = batch_mode, **kw)
 
+    security.declareProtected('Import/Export objects', 'importFile')
     def importFile(self, import_file=None, id=None, REQUEST=None,
                    batch_mode=False, **kw):
       """
@@ -413,86 +435,7 @@ class TemplateTool (BaseTool):
       elif batch_mode:
         return bt
 
-    security.declareProtected(Permissions.ManagePortal, 'runUnitTestList')
-    def runUnitTestList(self, test_list=[],
-                        sql_connection_string='',
-                        save=False, load=False,
-                        repository_list=None,
-                        REQUEST=None, RESPONSE=None, **kwd):
-      """Runs Unit Tests related to this Business Template
-      """
-      if repository_list is None:
-        repository_list = []
-      # XXX: should check for file presence before trying to execute.
-      # XXX: should check if the unit test file is configured in the BT
-      site_configuration = getConfiguration()
-      from Products.ERP5Type.tests.runUnitTest import getUnitTestFile
-      import Products.ERP5
-      if RESPONSE is not None:
-        outfile = RESPONSE
-      elif REQUEST is not None:
-        outfile = RESPONSE = REQUEST.RESPONSE
-      else:
-        outfile =  StringIO()
-      if RESPONSE is not None:
-        RESPONSE.setHeader('Content-type', 'text/plain')
-      current_sys_path = sys.path
-      # add path with tests
-      current_sys_path.append(os.path.join(site_configuration.instancehome,
-        'tests'))
-
-      test_cmd_args = [sys.executable, getUnitTestFile()]
-      test_cmd_args += ['--erp5_sql_connection_string', sql_connection_string]
-      if load:
-        test_cmd_args += ['--load']
-      if save:
-        test_cmd_args += ['--save']
-      # pass currently used product path to test runner
-      products_path_list = site_configuration.products
-      # add products from Zope, as some sites are not providing it
-      zope_products_path = os.path.join(site_configuration.softwarehome, 'Products')
-      if zope_products_path not in products_path_list:
-        products_path_list.append(zope_products_path)
-      test_cmd_args += ['--products_path', ','.join(products_path_list)]
-      test_cmd_args += ['--sys_path', ','.join(current_sys_path)]
-      bt5_path_list = []
-      ## XXX-TODO: requires that asRepository works without security, maybe
-      ##           with special key?
-      # bt5_path_list.append(self.absolute_url() + '/asRepository/')
-      # add passed repository list
-      bt5_path_list.extend(repository_list)
-      # adding locally saved Business Templates, not perfect, but helps some
-      # people doing strict TTW development
-      bt5_path_list.append(site_configuration.clienthome)
-      test_cmd_args += ['--bt5_path', ','.join(bt5_path_list)]
-      test_cmd_args += test_list
-      # prepare message - intentionally without any additional formatting, as
-      # only developer will read it, and they will have to understand issues in
-      # case of test failures
-      invoke_command_message = 'Running tests using command: %r'% test_cmd_args
-      # as it is like using external interface, log what is send there
-      LOG('TemplateTool.runUnitTestList', INFO, invoke_command_message)
-      # inform developer how test are invoked
-      outfile.write(invoke_command_message + '\n')
-      outfile.flush()
-      process = subprocess.Popen(test_cmd_args,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT)
-
-      # "for line in process.stdout" is cleaner but is buffered,
-      # see http://bugs.python.org/issue3907
-      # We use this ugly construct to avoid waiting for test
-      # termination before printing content
-      while True:
-        line = process.stdout.readline()
-        if not line:
-          break
-        outfile.write(line)
-        outfile.flush()
-
-      if hasattr(outfile, 'getvalue'):
-        return outfile.getvalue()
-
+    security.declareProtected(Permissions.ManagePortal, 'getDiffFilterScriptList')
     def getDiffFilterScriptList(self):
       """
       Return list of scripts usable to filter diff
@@ -510,12 +453,87 @@ class TemplateTool (BaseTool):
           LOG("TemplateTool", WARNING, "Unable to find %r script" % script_id)
       return script_list
 
+    security.declareProtected(Permissions.ManagePortal, 'getFilteredDiffAsHTML')
     def getFilteredDiffAsHTML(self, diff):
       """
       Return the diff filtered by python scripts into html format
       """
       return self.getFilteredDiff(diff).toHTML()
 
+    def _cleanUpTemplateFolder(self, folder_path):
+      file_object_list = [x for x in os.listdir(folder_path)]
+      for file_object in file_object_list:
+        file_object_path = os.path.join(folder_path, file_object)
+        if os.path.isfile(file_object_path):
+          os.unlink(file_object_path)
+        else:
+          shutil.rmtree(file_object_path)
+
+    security.declareProtected( 'Import/Export objects', 'importAndReExportBusinessTemplateFromPath' )
+    def importAndReExportBusinessTemplateFromPath(self, template_path):
+      """
+        Imports the template that is in the template_path and exports it to the
+        same path.
+
+        We want to clean this directory, i.e. remove all files before
+        the export. Because this is called as activity though, it could cause
+        the following problem:
+        - Activity imports the template
+        - Activity removes all files from template_path
+        - Activity fails in export.
+        Then the folder contents will be changed, so when retrying the
+        activity may succeed without the user understanding that files were
+        erased. For this reason export is done in 3 steps:
+        - First to a temporary directory
+        - If there was no error delete contents of template_path
+        - Copy the contents of the temporary directory to the template_path
+      """
+      import_template = self.download(url=template_path)
+      export_dir = mkdtemp()
+      try:
+        import_template.export(path=export_dir, local=True)
+        self._cleanUpTemplateFolder(template_path)
+        file_name_list = [x for x in os.listdir(export_dir)]
+        for file_name in file_name_list:
+          temp_file_path = os.path.join(export_dir, file_name)
+          destination_file_path = os.path.join(template_path, file_name)
+          shutil.move(temp_file_path, destination_file_path)
+      except:
+        raise
+      finally:
+        shutil.rmtree(export_dir)
+
+    security.declareProtected( 'Import/Export objects', 'importAndReExportBusinessTemplateListFromPath' )
+    def importAndReExportBusinessTemplateListFromPath(self, repository_list, REQUEST=None, **kw):
+      """
+        Migrate business templates to new format where files like .py or .html
+        are exported seprately than the xml.
+      """
+      repository_list = filter(bool, repository_list)
+
+      if REQUEST is None:
+        REQUEST = getattr(self, 'REQUEST', None)
+        
+      if len(repository_list) == 0 and REQUEST:
+        ret_url = self.absolute_url()
+        REQUEST.RESPONSE.redirect("%s?portal_status_message=%s"
+                                  % (ret_url, 'No repository was defined'))
+                                    
+      for repository in repository_list:
+        repository = repository.rstrip('\n')
+        repository = repository.rstrip('\r')
+        for business_template_id in os.listdir(repository):
+          template_path = os.path.join(repository, business_template_id)
+          if os.path.isfile(template_path):
+            LOG(business_template_id,0,'is file, so it is skipped')
+          else:
+            if not os.path.exists((os.path.join(template_path, 'bt'))):
+              LOG(business_template_id,0,'has no bt sub-folder, so it is skipped')
+            else:
+              self.activate(activity='SQLQueue').\
+                importAndReExportBusinessTemplateFromPath(template_path)
+
+    security.declareProtected(Permissions.ManagePortal, 'getFilteredDiff')
     def getFilteredDiff(self, diff):
       """
       Filter the diff using python scripts
@@ -533,6 +551,7 @@ class TemplateTool (BaseTool):
       # DiffFile does not provide yet such feature
       return diff_file_object
 
+    security.declareProtected(Permissions.ManagePortal, 'diffObjectAsHTML')
     def diffObjectAsHTML(self, REQUEST, **kw):
       """
         Convert diff into a HTML format before reply
@@ -541,6 +560,7 @@ class TemplateTool (BaseTool):
       """
       return DiffFile(self.diffObject(REQUEST, **kw)).toHTML()
 
+    security.declareProtected(Permissions.ManagePortal, 'diffObject')
     def diffObject(self, REQUEST, **kw):
       """
         Make diff between two objects, whose paths are stored in values bt1
@@ -575,7 +595,8 @@ class TemplateTool (BaseTool):
       """
       self.repository_dict = PersistentMapping()
       property_list = ('title', 'version', 'revision', 'description', 'license',
-                       'dependency', 'test_dependency', 'provision', 'copyright')
+                       'dependency', 'test_dependency', 'provision', 'copyright',
+                       'force_install')
       #LOG('updateRepositoryBusiessTemplateList', 0,
       #    'repository_list = %r' % (repository_list,))
       for repository in repository_list:
@@ -642,6 +663,8 @@ class TemplateTool (BaseTool):
                   temp_property_dict.get('provision', ())
               property_dict['copyright_list'] = \
                   temp_property_dict.get('copyright', ())
+              property_dict['force_install'] = \
+                  int(temp_property_dict.get('force_install', [0])[0])
 
               property_dict_list.append(property_dict)
           finally:
@@ -681,6 +704,7 @@ class TemplateTool (BaseTool):
       """
       return b64encode(cPickle.dumps((repository, id)))
 
+    security.declarePublic('compareVersionStrings')
     def compareVersionStrings(self, version, comparing_string):
       """
        comparing_string is like "<= 0.2" | "operator version"
@@ -824,6 +848,8 @@ class TemplateTool (BaseTool):
         raise BusinessTemplateUnknownError, 'The Business Template %s could not be found on repository %s'%(bt[1], bt[0])
       return []
 
+    security.declareProtected(Permissions.ManagePortal,
+                              'findProviderInBTList')
     def findProviderInBTList(self, provider_list, bt_list):
       """
        Find one provider in provider_list which is present in
@@ -1037,6 +1063,7 @@ class TemplateTool (BaseTool):
       #LOG('getUpdatedRepositoryBusinessTemplateList', 0, 'kw = %r' % (kw,))
       return self.getRepositoryBusinessTemplateList(update_only=True, **kw)
 
+    security.declarePublic('compareVersions')
     def compareVersions(self, version1, version2):
       """
         Return negative if version1 < version2, 0 if version1 == version2,
@@ -1378,8 +1405,8 @@ class TemplateTool (BaseTool):
                        This is useful if we want to keep an old business
                        template without updating it and without removing it
 
-      deprecated_reinstall_set: this parameter needs to be removed
-                                by setting it at business template level.
+      deprecated_reinstall_set: this parameter is obsolete, please set
+                                force_install property at business template level
                                 It list all business templates who needs
                                 reinstall
 
@@ -1403,7 +1430,7 @@ class TemplateTool (BaseTool):
         template_list=dependency_list)
       update_bt5_list.sort(key=lambda x: dependency_list.index(x.title))
       for bt5 in update_bt5_list:
-        reinstall = bt5.title in deprecated_reinstall_set
+        reinstall = bt5.title in deprecated_reinstall_set or bt5.force_install
         if (not(reinstall) and bt5.version_state == 'present') or \
             bt5.title in keep_bt5_id_set:
           continue

@@ -28,7 +28,6 @@
 #
 ##############################################################################
 
-from zLOG import LOG, PROBLEM
 from Products.ERP5Type.Globals import InitializeClass
 
 from AccessControl import ClassSecurityInfo
@@ -71,10 +70,10 @@ class ERP5AccessTokenExtractionPlugin(BasePlugin):
       token = request.form.get("access_token", None)
     if token is not None:
       token_document = self.getPortalObject().access_token_module.\
-                                        unrestrictedTraverse(token, None)
-      # Access Token should be validated
-      # Check restricted access of URL
-      # Extract login information
+                                        _getOb(token, None)
+      # Access Token should be validated
+      # Check restricted access of URL
+      # Extract login information
       if token_document is not None:
         external_login = None
         method = token_document._getTypeBasedMethod('getExternalLogin')
@@ -102,11 +101,11 @@ def addERP5AccessTokenExtractionPlugin(dispatcher, id, title=None, REQUEST=None)
   dispatcher._setObject(plugin.getId(), plugin)
 
   if REQUEST is not None:
-      REQUEST['RESPONSE'].redirect(
-          '%s/manage_workspace'
-          '?manage_tabs_message='
-          'ERP5AccessTokenExtractionPlugin+added.'
-          % dispatcher.absolute_url())
+    REQUEST['RESPONSE'].redirect(
+      '%s/manage_workspace'
+      '?manage_tabs_message='
+      'ERP5AccessTokenExtractionPlugin+added.'
+      % dispatcher.absolute_url())
 
 #List implementation of class
 classImplements(ERP5AccessTokenExtractionPlugin,

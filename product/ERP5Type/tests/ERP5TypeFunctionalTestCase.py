@@ -35,6 +35,7 @@ import subprocess
 import shutil
 import transaction
 from ZPublisher.HTTPResponse import HTTPResponse
+from zExceptions.ExceptionFormatter import format_exception
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase, \
                                                _getConversionServerDict
 
@@ -132,6 +133,7 @@ class Browser:
 
   def run(self, url, display):
     self.clean()
+    self.environ = os.environ.copy()
     self._setEnviron()
     self._setDisplay(display)
     self._run(url)
@@ -151,21 +153,25 @@ class Browser:
 
   def _setDisplay(self, display):
     if display:
-      os.environ["DISPLAY"] = display
+      self.environ["DISPLAY"] = display
+    else:
+      xauth = os.path.expanduser('~/.Xauthority')
+      if os.path.exists(xauth):
+        self.environ["XAUTHORITY"] = xauth
 
   def _runCommand(self, *args):
     print " ".join(args)
-    self.process = subprocess.Popen(args, close_fds=True)
+    self.process = subprocess.Popen(args, close_fds=True, env=self.environ)
 
 class Firefox(Browser):
   """ Use firefox to open run all the tests"""
 
   def _setEnviron(self):
-    os.environ['MOZ_NO_REMOTE'] = '1'
-    os.environ['HOME'] = self.profile_dir
-    os.environ['LC_ALL'] = 'C'
-    os.environ["MOZ_CRASHREPORTER_DISABLE"] = "1"
-    os.environ["NO_EM_RESTART"] = "1"
+    self.environ['MOZ_NO_REMOTE'] = '1'
+    self.environ['HOME'] = self.profile_dir
+    self.environ['LC_ALL'] = 'C'
+    self.environ["MOZ_CRASHREPORTER_DISABLE"] = "1"
+    self.environ["NO_EM_RESTART"] = "1"
 
     # This disables unwanted SCIM as it fails with Xvfb, at least on Mandriva
     # 2010.0, because Firefox tries to start scim-bridge which SIGSEGV and
@@ -174,7 +180,7 @@ class Firefox(Browser):
                                         'XIM_PROGRAM',
                                         'XMODIFIERS',
                                         'QT_IM_MODULE'):
-      os.environ.pop(remove_environment_variable, None)
+      self.environ.pop(remove_environment_variable, None)
 
   def _run(self, url):
     # Prepare to run
@@ -182,8 +188,6 @@ class Firefox(Browser):
     firefox_bin = os.environ.get("firefox_bin", "firefox")
     self._runCommand(firefox_bin, "-no-remote",
                      "-profile", self.profile_dir, url)
-
-    os.environ['MOZ_NO_REMOTE'] = '0'
 
   def getPrefJs(self):
     from App.config import getConfiguration
@@ -304,7 +308,10 @@ class FunctionalTestRunner:
               " to use your existing display instead of Xvfb.")
         xvfb.run()
       self.browser.run(self._getTestURL() , xvfb.display)
-      while self.getStatus() is None:
+      while True:
+        status = self.getStatus()
+        if status is not None and not '>ONGOING<' in status:
+          break
         time.sleep(10)
         if (time.time() - start) > float(self.timeout):
           # TODO: here we could take a screenshot and display it in the report
@@ -399,8 +406,30 @@ class ERP5TypeFunctionalTestCase(ERP5TypeTestCase):
         return True
     return False
 
+  def testCheckZuitePageTemplatesValidHTML(self):
+    # Check the zuite page templates can be rendered, because selenium test
+    # runner does not report error in case there are errors in the page
+    # template.
+    tests_tool = self.portal.portal_tests
+    for page_template_path, page_template in tests_tool.ZopeFind(
+              tests_tool, obj_metatypes=['Page Template'], search_sub=1):
+      try:
+        page_template.pt_render()
+      except (KeyboardInterrupt, SystemExit):
+        raise
+      except:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        self.fail('Rendering of %s failed with error:\n%s' % (
+          page_template_path,
+          ''.join(format_exception(
+            exc_type,
+            exc_value,
+            exc_traceback,
+            as_html=False))))
+
+
   def testFunctionalTestRunner(self):
-    # first of all, abort to get rid of the mysql participation inn this
+    # first of all, abort to get rid of the mysql participation in this
     # transaction
     self.portal._p_jar.sync()
 
@@ -408,18 +437,21 @@ class ERP5TypeFunctionalTestCase(ERP5TypeTestCase):
       self.runner.remote_code_url_list = self.remote_code_url_list
 
     debug = self.foreground or os.environ.get("erp5_debug_mode")
-    self.runner.test(debug=debug)
+    error = None
     try:
-      detail, success, failure, \
-          expected_failure, error_title_list = self.runner.processResult()
+      self.runner.test(debug=debug)
     except TimeoutError, e:
+      error = repr(e)
       self._verboseErrorLog(20)
-      raise
+    else:
+      # In case of failure, verbose the error_log entries in order to collect
+      # appropriated information to debug the system.
+      if self._hasActivityFailure():
+        error = 'Failed activities exist.'
+        self._verboseErrorLog(20)
 
-    # In case of failure, verbose the error_log entries in order to collect
-    # appropriated information to debug the system.
-    if self._hasActivityFailure():
-       self._verboseErrorLog(20)
+    detail, success, failure, \
+        expected_failure, error_title_list = self.runner.processResult()
 
     self.logMessage("-" * 79)
     total = success + failure + expected_failure
@@ -433,7 +465,10 @@ class ERP5TypeFunctionalTestCase(ERP5TypeTestCase):
     self.logMessage("-" * 79)
     self.logMessage(detail)
     self.logMessage("-" * 79)
+    if failure:
+      self._verboseErrorLog(20)
     self.assertEqual([], error_title_list, '\n'.join(error_title_list))
+    self.assertEqual(None, error, error)
 
 # monkey patch HTTPResponse._unauthorized so that we will not have HTTP
 # authentication dialog in case of Unauthorized exception to prevent

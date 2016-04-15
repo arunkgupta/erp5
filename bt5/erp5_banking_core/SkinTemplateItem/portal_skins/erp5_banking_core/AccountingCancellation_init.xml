@@ -49,28 +49,35 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-# XXX it might be better to set resource according to source_payment.\n
-context.setResource(\'currency_module/\' + context.Baobab_getPortalReferenceCurrencyID())\n
-user_site_list = context.Baobab_getUserAssignedSiteList()\n
-if len(user_site_list)>0:\n
-  site = context.Baobab_getVaultSite(user_site_list[0])\n
-  site_url = site.getRelativeUrl()\n
-  context.setSite(site_url)\n
-context.assignRoleToSecurityGroup()\n
-
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>**kw</string> </value>
         </item>
         <item>
+            <key> <string>guard</string> </key>
+            <value>
+              <persistent> <string encoding="base64">AAAAAAAAAAI=</string> </persistent>
+            </value>
+        </item>
+        <item>
             <key> <string>id</string> </key>
             <value> <string>AccountingCancellation_init</string> </value>
+        </item>
+      </dictionary>
+    </pickle>
+  </record>
+  <record id="2" aka="AAAAAAAAAAI=">
+    <pickle>
+      <global name="Guard" module="Products.DCWorkflow.Guard"/>
+    </pickle>
+    <pickle>
+      <dictionary>
+        <item>
+            <key> <string>roles</string> </key>
+            <value>
+              <tuple>
+                <string>Owner</string>
+              </tuple>
+            </value>
         </item>
       </dictionary>
     </pickle>

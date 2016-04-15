@@ -49,31 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>portal = context.getPortalObject()\n
-from ZTUtils import LazyFilter\n
-resource = context.getResourceValue()\n
-\n
-result = []\n
-\n
-if include_empty:\n
-  result.append([\'\',\'\'])\n
-if resource is None:\n
-  return result\n
-\n
-# XXX: Is it possible to use cache? Hook it on resource?\n
-for transformation in LazyFilter(\n
-  resource.getResourceRelatedValueList(portal_type=portal.getPortalTransformationTypeList()),\n
-  skip=\'View\'\n
-  ):\n
-  if not skip_invalidated or transformation.getProperty(\'validation_state\',\'default\') != \'invalidated\':\n
-    result.append( (transformation.getTitle(),transformation.getRelativeUrl()) )\n
-\n
-result.sort(key=lambda x: x[0])\n
-return result\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>include_empty=1, skip_invalidated=1</string> </value>
         </item>

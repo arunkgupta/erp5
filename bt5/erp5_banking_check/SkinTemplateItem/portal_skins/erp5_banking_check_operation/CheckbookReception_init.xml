@@ -49,23 +49,35 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>site = context.Baobab_getVaultSite(context.Baobab_getUserAssignedSiteList()[0])\n
-site_url = site.getRelativeUrl()\n
-context.setDestination(site_url)\n
-\n
-from DateTime import DateTime\n
-date = DateTime()\n
-context.setStartDate(date)\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>**kw</string> </value>
         </item>
         <item>
+            <key> <string>guard</string> </key>
+            <value>
+              <persistent> <string encoding="base64">AAAAAAAAAAI=</string> </persistent>
+            </value>
+        </item>
+        <item>
             <key> <string>id</string> </key>
             <value> <string>CheckbookReception_init</string> </value>
+        </item>
+      </dictionary>
+    </pickle>
+  </record>
+  <record id="2" aka="AAAAAAAAAAI=">
+    <pickle>
+      <global name="Guard" module="Products.DCWorkflow.Guard"/>
+    </pickle>
+    <pickle>
+      <dictionary>
+        <item>
+            <key> <string>roles</string> </key>
+            <value>
+              <tuple>
+                <string>Owner</string>
+              </tuple>
+            </value>
         </item>
       </dictionary>
     </pickle>

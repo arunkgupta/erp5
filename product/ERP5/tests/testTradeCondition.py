@@ -31,7 +31,6 @@ import unittest
 from DateTime import DateTime
 
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
-from Products.ZSQLCatalog.SQLCatalog import Catalog
 from Products.ERP5Type.tests.utils import SubcontentReindexingWrapper
 
 class TradeConditionTestCase(ERP5TypeTestCase, SubcontentReindexingWrapper):
@@ -446,6 +445,58 @@ class TestTradeConditionSupplyLine(TradeConditionTestCase):
                                  quantity=1)
     # not using the supply line inside trade condition
     self.assertEqual(1, line.getPrice())
+
+  def test_supply_line_in_invalidated_trade_condition_with_reference_does_not_apply(self):
+    # edge case derived from
+    # test_supply_line_in_invalidated_trade_condition_does_not_apply, if a
+    # trade condition have a reference and is invalidated, composition
+    # mechanism will lookup another applicable trade condition, which can fail,
+    # but this should not affect getPrice
+    other_supply = self.portal.getDefaultModule(self.supply_type
+                             ).newContent(portal_type=self.supply_type,
+                                          resource_value=self.resource,
+                                          source_section_value=self.vendor,
+                                          destination_section_value=self.client)
+    other_supply.validate()
+    other_supply_line = other_supply.newContent(
+                                    portal_type=self.supply_line_type,
+                                    base_price=1)
+    self.trade_condition.setReference(self.id())
+    supply_line = self.trade_condition.newContent(
+                                    portal_type=self.supply_line_type,
+                                    resource_value=self.resource,
+                                    base_price=2)
+    self.order.setSpecialiseValue(self.trade_condition)
+    self.order.setSourceSectionValue(self.vendor)
+    self.order.setDestinationSectionValue(self.client)
+
+    self.trade_condition.invalidate()
+    self.tic()
+
+    line = self.order.newContent(portal_type=self.order_line_type,
+                                 resource_value=self.resource,
+                                 quantity=1)
+    # not using the supply line inside trade condition
+    self.assertEqual(1, line.getPrice())
+
+  def test_supply_line_in_other_trade_condition_does_not_apply(self):
+    """Supply lines from trade condition not related to an order does not apply.
+    """
+    supply_line = self.trade_condition.newContent(
+                                    portal_type=self.supply_line_type,
+                                    resource_value=self.resource,
+                                    base_price=2)
+    self.assertEqual(None, self.order.getSpecialiseValue())
+    self.order.setSourceSectionValue(self.vendor)
+    self.order.setDestinationSectionValue(self.client)
+
+    self.tic()
+
+    line = self.order.newContent(portal_type=self.order_line_type,
+                                 resource_value=self.resource,
+                                 quantity=1)
+    # not using the supply line inside trade condition
+    self.assertEqual(None, line.getPrice())
 
   # TODO: move to testSupplyLine ! (which does not exist yet)
   def test_supply_line_section(self):

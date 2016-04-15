@@ -26,8 +26,10 @@
 #
 ##############################################################################
 
+import sys
 from copy import deepcopy
 from collections import defaultdict
+from math import ceil
 from Products.CMFCore.CatalogTool import CatalogTool as CMFCoreCatalogTool
 from Products.ZSQLCatalog.ZSQLCatalog import ZCatalog
 from Products.ZSQLCatalog.SQLCatalog import Query, ComplexQuery, SimpleQuery
@@ -38,6 +40,7 @@ from Products.CMFCore.utils import UniqueObject, _getAuthenticatedUser, getToolB
 from Products.ERP5Type.Globals import InitializeClass, DTMLFile
 from Acquisition import aq_base, aq_inner, aq_parent, ImplicitAcquisitionWrapper
 from Products.CMFActivity.ActiveObject import ActiveObject
+from Products.CMFActivity.ActivityTool import GroupedMessage
 from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
 
 from AccessControl.PermissionRole import rolesForPermissionOn
@@ -46,12 +49,10 @@ from MethodObject import Method
 
 from Products.ERP5Security import mergedLocalRoles
 from Products.ERP5Security.ERP5UserManager import SUPER_USER
-from Products.ERP5Type.Utils import sqlquote
+from Products.ZSQLCatalog.Utils import sqlquote
 
 import warnings
 from zLOG import LOG, PROBLEM, WARNING, INFO
-from _mysql_exceptions import ProgrammingError
-from MySQLdb.constants.ER import NO_SUCH_TABLE
 
 ACQUIRE_PERMISSION_VALUE = []
 DYNAMIC_METHOD_NAME = 'z_related_'
@@ -313,6 +314,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
                 , 'manage_schema')
     manage_schema = DTMLFile('dtml/manageSchema', globals())
 
+    security.declarePublic('getPreferredSQLCatalogId')
     def getPreferredSQLCatalogId(self, id=None):
       """
       Get the SQL Catalog from preference.
@@ -365,6 +367,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         return result
 
     # Schema Management
+    security.declareProtected(Permissions.ManagePortal, 'editColumn')
     def editColumn(self, column_id, sql_definition, method_id, default_value, REQUEST=None, RESPONSE=None):
       """
         Modifies a schema column of the catalog
@@ -378,17 +381,20 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         new_schema.append(new_c)
       self.setColumnList(new_schema)
 
+    security.declareProtected(Permissions.ManagePortal, 'setColumnList')
     def setColumnList(self, column_list):
       """
       """
       self._sql_schema = column_list
 
+    security.declarePublic('getColumnList')
     def getColumnList(self):
       """
       """
       if not hasattr(self, '_sql_schema'): self._sql_schema = []
       return self._sql_schema
 
+    security.declarePublic('getColumn')
     def getColumn(self, column_id):
       """
       """
@@ -397,6 +403,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
           return c
       return None
 
+    security.declareProtected(Permissions.ManagePortal, 'editIndex')
     def editIndex(self, index_id, sql_definition, REQUEST=None, RESPONSE=None):
       """
         Modifies the schema of the catalog
@@ -410,17 +417,20 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         new_index.append(new_c)
       self.setIndexList(new_index)
 
+    security.declareProtected(Permissions.ManagePortal, 'setIndexList')
     def setIndexList(self, index_list):
       """
       """
       self._sql_index = index_list
 
+    security.declarePublic('getIndexList')
     def getIndexList(self):
       """
       """
       if not hasattr(self, '_sql_index'): self._sql_index = []
       return self._sql_index
 
+    security.declarePublic('getIndex')
     def getIndex(self, index_id):
       """
       """
@@ -431,7 +441,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
 
 
     security.declarePublic('getAllowedRolesAndUsers')
-    def getAllowedRolesAndUsers(self, sql_catalog_id=None, **kw):
+    def getAllowedRolesAndUsers(self, sql_catalog_id=None, local_roles=None):
       """
         Return allowed roles and users.
 
@@ -471,7 +481,6 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
 
       # Patch for ERP5 by JP Smets in order
       # to implement worklists and search of local roles
-      local_roles = kw.get('local_roles', None)
       if local_roles:
         local_role_dict = dict(catalog.getSQLCatalogLocalRoleKeysList())
         role_dict = dict(catalog.getSQLCatalogRoleKeysList())
@@ -512,7 +521,8 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
 
       return allowedRolesAndUsers, role_column_dict, local_role_column_dict
 
-    def getSecurityUidDictAndRoleColumnDict(self, sql_catalog_id=None, **kw):
+    security.declarePublic('getSecurityUidDictAndRoleColumnDict')
+    def getSecurityUidDictAndRoleColumnDict(self, sql_catalog_id=None, local_roles=None):
       """
         Return a dict of local_roles_group_id -> security Uids and a
         dictionnary containing available role columns.
@@ -522,7 +532,10 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         catalogs.
       """
       allowedRolesAndUsers, role_column_dict, local_role_column_dict = \
-          self.getAllowedRolesAndUsers(**kw)
+          self.getAllowedRolesAndUsers(
+            sql_catalog_id=sql_catalog_id,
+            local_roles=local_roles,
+          )
       catalog = self.getSQLCatalog(sql_catalog_id)
       method = getattr(catalog, catalog.sql_search_security, None)
       if allowedRolesAndUsers:
@@ -561,7 +574,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       return security_uid_dict, role_column_dict, local_role_column_dict
 
     security.declarePublic('getSecurityQuery')
-    def getSecurityQuery(self, query=None, sql_catalog_id=None, **kw):
+    def getSecurityQuery(self, query=None, sql_catalog_id=None, local_roles=None, **kw):
       """
         Build a query based on allowed roles or on a list of security_uid
         values. The query takes into account the fact that some roles are
@@ -575,7 +588,10 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         return query
       original_query = query
       security_uid_dict, role_column_dict, local_role_column_dict = \
-          self.getSecurityUidDictAndRoleColumnDict(sql_catalog_id=sql_catalog_id, **kw)
+          self.getSecurityUidDictAndRoleColumnDict(
+            sql_catalog_id=sql_catalog_id,
+            local_roles=local_roles,
+          )
 
       role_query = None
       security_uid_query = None
@@ -633,7 +649,7 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       return query
 
     # searchResults has inherited security assertions.
-    def searchResults(self, query=None, **kw):
+    def searchResults(self, query=None, sql_catalog_id=None, local_roles=None, **kw):
         """
         Calls ZCatalog.searchResults with extra arguments that
         limit the results to what the user is allowed to see.
@@ -644,53 +660,59 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         #    kw[ 'effective' ] = { 'query' : now, 'range' : 'max' }
         #    kw[ 'expires'   ] = { 'query' : now, 'range' : 'min' }
 
-        catalog_id = self.getPreferredSQLCatalogId(kw.pop("sql_catalog_id", None))
-        query = self.getSecurityQuery(query=query, sql_catalog_id=catalog_id, **kw)
+        catalog_id = self.getPreferredSQLCatalogId(sql_catalog_id)
+        query = self.getSecurityQuery(
+          query=query,
+          sql_catalog_id=catalog_id,
+          local_roles=local_roles,
+        )
+        if query is not None:
+          kw['query'] = query
         kw.setdefault('limit', self.default_result_limit)
         # get catalog from preference
         #LOG("searchResult", INFO, catalog_id)
         #         LOG("searchResult", INFO, ZCatalog.searchResults(self, query=query, sql_catalog_id=catalog_id, src__=1, **kw))
-        return ZCatalog.searchResults(self, query=query, sql_catalog_id=catalog_id, **kw)
+        return ZCatalog.searchResults(self, sql_catalog_id=catalog_id, **kw)
 
     __call__ = searchResults
 
     security.declarePrivate('unrestrictedSearchResults')
-    def unrestrictedSearchResults(self, REQUEST=None, **kw):
+    def unrestrictedSearchResults(self, **kw):
         """Calls ZSQLCatalog.searchResults directly without restrictions.
         """
         kw.setdefault('limit', self.default_result_limit)
-        return ZCatalog.searchResults(self, REQUEST, **kw)
+        return ZCatalog.searchResults(self, **kw)
 
     # We use a string for permissions here due to circular reference in import
     # from ERP5Type.Permissions
     security.declareProtected('Search ZCatalog', 'getResultValue')
-    def getResultValue(self, query=None, **kw):
+    def getResultValue(self, **kw):
         """
         A method to factor common code used to search a single
         object in the database.
         """
         kw.setdefault('limit', 1)
-        result = self.searchResults(query=query, **kw)
+        result = self.searchResults(**kw)
         try:
           return result[0].getObject()
         except IndexError:
           return None
 
     security.declarePrivate('unrestrictedGetResultValue')
-    def unrestrictedGetResultValue(self, query=None, **kw):
+    def unrestrictedGetResultValue(self, **kw):
         """
         A method to factor common code used to search a single
         object in the database. Same as getResultValue but without
         taking into account security.
         """
         kw.setdefault('limit', 1)
-        result = self.unrestrictedSearchResults(query=query, **kw)
+        result = self.unrestrictedSearchResults(**kw)
         try:
           return result[0].getObject()
         except IndexError:
           return None
 
-    def countResults(self, query=None, **kw):
+    def countResults(self, query=None, sql_catalog_id=None, local_roles=None, **kw):
         """
             Calls ZCatalog.countResults with extra arguments that
             limit the results to what the user is allowed to see.
@@ -702,11 +724,17 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
         #    now = DateTime()
         #    #kw[ 'effective' ] = { 'query' : now, 'range' : 'max' }
         #    #kw[ 'expires'   ] = { 'query' : now, 'range' : 'min' }
-        catalog_id = self.getPreferredSQLCatalogId(kw.pop("sql_catalog_id", None))
-        query = self.getSecurityQuery(query=query, sql_catalog_id=catalog_id, **kw)
+        catalog_id = self.getPreferredSQLCatalogId(sql_catalog_id)
+        query = self.getSecurityQuery(
+          query=query,
+          sql_catalog_id=catalog_id,
+          local_roles=local_roles,
+        )
+        if query is not None:
+          kw['query'] = query
         kw.setdefault('limit', self.default_count_limit)
         # get catalog from preference
-        return ZCatalog.countResults(self, query=query, sql_catalog_id=catalog_id, **kw)
+        return ZCatalog.countResults(self, sql_catalog_id=catalog_id, **kw)
 
     security.declarePrivate('unrestrictedCountResults')
     def unrestrictedCountResults(self, REQUEST=None, **kw):
@@ -790,23 +818,28 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
     def catalogObjectList(self, object_list, *args, **kw):
         """Catalog a list of objects"""
         m = object_list[0]
-        if type(m) is list:
-          tmp_object_list = [x[0] for x in object_list]
-          super(CatalogTool, self).catalogObjectList(tmp_object_list, **m[2])
+        if isinstance(m, GroupedMessage):
+          tmp_object_list = [x.object for x in object_list]
+          super(CatalogTool, self).catalogObjectList(tmp_object_list, **m.kw)
           if tmp_object_list:
-            for x in object_list:
-              if x[0] in tmp_object_list:
-                del object_list[3] # no result means failed
+            exc_info = sys.exc_info()
+          for x in object_list:
+            if x.object in tmp_object_list:
+              x.raised(exc_info)
+            else:
+              x.result = None
         else:
           super(CatalogTool, self).catalogObjectList(object_list, *args, **kw)
 
     security.declarePrivate('uncatalogObjectList')
     def uncatalogObjectList(self, message_list):
       """Uncatalog a list of objects"""
-      # XXX: this is currently only a placeholder for further optimization
-      #      (for the moment, it's not faster than the dummy group method)
-      for m in message_list:
-        self.unindexObject(*m[1], **m[2])
+      # TODO: this is currently only a placeholder for further optimization
+      try:
+        for m in message_list:
+          m.result = self.unindexObject(*m.args, **m.kw)
+      except Exception:
+        m.raised()
 
     security.declarePrivate('unindexObject')
     def unindexObject(self, object=None, path=None, uid=None,sql_catalog_id=None):
@@ -881,16 +914,18 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       by looking at the category tree.
 
       For exemple it will generate:
-      destination_reference | category,catalog/reference/z_related_destination
-      default_destination_reference | category,catalog/reference/z_related_destination
-      strict_destination_reference | category,catalog/reference/z_related_strict_destination
-      destination_title | category,catalog_full_text/title/z_related_destination
+      destination_title | category,catalog/title/z_related_destination
+      default_destination_title | category,catalog/title/z_related_destination
+      strict_destination_title | category,catalog/title/z_related_strict_destination
 
       strict_ related keys only returns documents which are strictly member of
       the category.
       """
       related_key_list = []
-      base_cat_id_list = self.portal_categories.getBaseCategoryDict()
+      base_cat_id_set = set(
+        self.getPortalObject().portal_categories.getBaseCategoryList()
+      )
+      base_cat_id_set.discard('parent')
       default_string = 'default_'
       strict_string = 'strict_'
       related_string = 'related_'
@@ -905,31 +940,19 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
           strict = 1
           key = key[len(strict_string):]
           prefix = prefix + strict_string
-        splitted_key = key.split('_')
-        # look from the end of the key from the beginning if we
-        # can find 'title', or 'portal_type'...
-        for i in xrange(len(splitted_key) - 1, 0, -1):
-          expected_base_cat_id = '_'.join(splitted_key[0:i])
-          if expected_base_cat_id != 'parent' and \
-             expected_base_cat_id in base_cat_id_list:
+        split_key = key.split('_')
+        for i in xrange(len(split_key) - 1, 0, -1):
+          expected_base_cat_id = '_'.join(split_key[0:i])
+          if expected_base_cat_id in base_cat_id_set:
             # We have found a base_category
-            end_key = '_'.join(splitted_key[i:])
+            end_key = '_'.join(split_key[i:])
             related = end_key.startswith(related_string)
             if related:
               end_key = end_key[len(related_string):]
             # XXX: joining with non-catalog tables is not trivial and requires
-            # ZSQLCatalog's ColumnMapper cooperation, so only allow columns in
-            # catalog or catalog_full_text tables.
-            if end_key != 'uid' and 'catalog_full_text' in column_map.get(end_key, ()):
-              related_key_list.append(
-                prefix + key + ' | category,catalog_full_text/' +
-                end_key +
-                '/z_related_' +
-                ('strict_' if strict else '') +
-                expected_base_cat_id +
-                ('_related' if related else '')
-              )
-            elif 'catalog' in column_map.get(end_key, ()):
+            # ZSQLCatalog's ColumnMapper cooperation, so only allow catalog
+            # columns.
+            if 'catalog' in column_map.get(end_key, ()):
               is_uid = end_key == 'uid'
               if is_uid:
                 end_key = 'uid' if related else 'category_uid'
@@ -977,22 +1000,49 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       return result
 
     def _searchAndActivate(self, method_id, method_args=(), method_kw={},
-                           activate_kw={}, min_uid=None, **kw):
+                           activate_kw={}, min_uid=None, group_kw={}, **kw):
       """Search the catalog and run a script by activity on all found objects
 
-      This method is configurable (via 'packet_size' & 'activity_count'
-      parameters) so that it can work efficiently with databases of any size.
+      In order to not generate too many activities, this method limits the
+      number of rows to fetch from the catalog, and if the catalog would return
+      more results, it resumes by calling itself by activity.
+
+      'activate_kw' is for common activate parameters between all generated
+      activities and is usually used for priority and dependencies.
+
+      Common usage is to call this method without 'select_method_id'.
+      In this case, found objects are processed via a CMFActivity grouping,
+      and this can be configured via 'group_kw', for additional parameters to
+      pass to CMFActivity (in particular: 'activity' and 'group_method_*').
+      A generic grouping method is used if none is given.
+      group_method_cost default to 30 objects per packet.
+
       'select_method_id', if provided, will be called with partial catalog
       results and returned value will be provided to the callable identified by
       'method_id' (which will no longer be invoked in the context of a given
       document returned by catalog) as first positional argument.
+      Use 'packet_size' parameter to limit the size of each group (default: 30).
 
-      'activate_kw' may specify an active process to collect results.
+      'activity_count' parameter is deprecated.
+      Its value should be hardcoded because CMFActivity can now handle many
+      activities efficiently and any tweak should benefit to everyone.
+      However, there are still rare cases where one want to limit the number
+      of processing nodes, to minimize latency of high-priority activities.
       """
-      catalog_kw = dict(kw)
-      packet_size = catalog_kw.pop('packet_size', 30)
-      limit = packet_size * catalog_kw.pop('activity_count', 100)
+      catalog_kw = kw.copy()
       select_method_id = catalog_kw.pop('select_method_id', None)
+      if select_method_id:
+        packet_size = catalog_kw.pop('packet_size', 30)
+        limit = packet_size * catalog_kw.pop('activity_count', 100)
+      elif 'packet_size' in catalog_kw: # BBB
+        assert not group_kw, (kw, group_kw)
+        packet_size = catalog_kw.pop('packet_size')
+        group_method_cost = 1. / packet_size
+        limit = packet_size * catalog_kw.pop('activity_count', 100)
+      else:
+        group_method_cost = group_kw.get('group_method_cost', .034) # 30 objects
+        limit = catalog_kw.pop('activity_count', None) or \
+          100 * int(ceil(1 / group_method_cost))
       if min_uid:
         catalog_kw['min_uid'] = SimpleQuery(uid=min_uid,
                                             comparison_operator='>')
@@ -1004,23 +1054,29 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       result_count = len(r)
       if result_count:
         if result_count == limit:
-          next_kw = dict(activate_kw, priority=1+activate_kw.get('priority', 1))
+          next_kw = activate_kw.copy()
+          next_kw['priority'] = 1 + next_kw.get('priority', 1)
           self.activate(activity='SQLQueue', **next_kw) \
               ._searchAndActivate(method_id,method_args, method_kw,
-                                  activate_kw, r[-1].getUid(), **kw)
-        portal_activities = self.getPortalObject().portal_activities
-        active_portal_activities = portal_activities.activate(
-          activity='SQLQueue', **activate_kw)
-        if select_method_id is None:
-          r = [x.getPath() for x in r]
-          r.sort()
-          activate = active_portal_activities.callMethodOnObjectList
-          method_args = (method_id, ) + method_args
-        else:
+                                  activate_kw, r[-1].getUid(),
+                                  group_kw=group_kw, **kw)
+        if select_method_id:
+          portal_activities = self.getPortalObject().portal_activities
+          active_portal_activities = portal_activities.activate(
+            activity='SQLQueue', **activate_kw)
           r = getattr(portal_activities, select_method_id)(r)
           activate = getattr(active_portal_activities, method_id)
-        for i in xrange(0, result_count, packet_size):
-          activate(r[i:i+packet_size], *method_args, **method_kw)
+          for i in xrange(0, result_count, packet_size):
+            activate(r[i:i+packet_size], *method_args, **method_kw)
+        else:
+          kw = activate_kw.copy()
+          kw['activity'] = 'SQLQueue'
+          if group_method_cost < 1:
+            kw['group_method_cost'] = group_method_cost
+            kw['group_method_id'] = None
+            kw.update(group_kw)
+          for r in r:
+            getattr(r.activate(**kw), method_id)(*method_args, **method_kw)
 
     security.declarePublic('searchAndActivate')
     def searchAndActivate(self, *args, **kw):
@@ -1033,20 +1089,16 @@ class CatalogTool (UniqueObject, ZCatalog, CMFCoreCatalogTool, ActiveObject):
       catalog = self.getSQLCatalog(sql_catalog_id)
       connection_id = catalog.z_create_catalog.connection_id
       src = []
-      for clear_method in catalog.sql_clear_catalog:
-        clear_method = catalog[clear_method]
-        try:
-          r = clear_method._upgradeSchema(connection_id, src__=1)
-        except ProgrammingError, e:
-          if e[0] != NO_SUCH_TABLE:
-            raise
-          r = clear_method(src__=1)
-        if r:
-          src.append(r)
-      if src and not src__:
-        query = self.getPortalObject()[connection_id]().query
-        for r in src:
-          query(r)
+      db = self.getPortalObject()[connection_id]()
+      with db.lock():
+        for clear_method in catalog.sql_clear_catalog:
+          r = catalog[clear_method]._upgradeSchema(
+            connection_id, create_if_not_exists=1, src__=1)
+          if r:
+            src.append(r)
+        if not src__:
+          for r in src:
+            db.query(r)
       return src
 
 

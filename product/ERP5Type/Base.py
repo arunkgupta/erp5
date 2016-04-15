@@ -85,7 +85,7 @@ from Products.ERP5Type.Accessor.Accessor import Accessor as Method
 from Products.ERP5Type.Accessor.TypeDefinition import asDate
 from Products.ERP5Type.Message import Message
 from Products.ERP5Type.ConsistencyMessage import ConsistencyMessage
-from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod
+from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod, super_user
 
 from zope.interface import classImplementsOnly, implementedBy
 
@@ -116,6 +116,8 @@ def resetRegisteredWorkflowMethod(portal_type=None):
   """
   for method in workflow_method_registry:
     method.reset(portal_type=portal_type)
+
+  del workflow_method_registry[:]
 
 class WorkflowMethod(Method):
 
@@ -759,16 +761,6 @@ class Base( CopyContainer,
     self._setTitle(value)
     self.reindexObject()
 
-  security.declareProtected( Permissions.ModifyPortalContent, 'setDescription' )
-  def setDescription(self, value):
-    """
-      Set the description and reindex.
-      Overrides CMFCore/PortalFolder.py implementation, which does not reindex
-      and is guarded by inappropriate security check.
-    """
-    self._setDescription(value)
-    self.reindexObject()
-
   security.declarePublic('provides')
   def provides(cls, interface_name):
     """
@@ -819,12 +811,16 @@ class Base( CopyContainer,
   getId = BaseAccessor.Getter('getId', 'id', 'string')
 
   # Debug
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getOid')
   def getOid(self):
     """
       Return ODB oid
     """
     return self._p_oid
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getOidRepr')
   def getOidRepr(self):
     """
       Return ODB oid, in an 'human' readable form.
@@ -832,10 +828,14 @@ class Base( CopyContainer,
     from ZODB.utils import oid_repr
     return oid_repr(self._p_oid)
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getSerial')
   def getSerial(self):
     """Return ODB Serial."""
     return self._p_serial
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getHistorySerial')
   def getHistorySerial(self):
     """Return ODB Serial, in the same format used for history keys"""
     return '.'.join([str(x) for x in unpack('>HHHH', self._p_serial)])
@@ -1184,6 +1184,7 @@ class Base( CopyContainer,
     If an accessor exists for this property, the accessor will be called,
     default value will be passed to the accessor as first positional argument.
     """
+    __traceback_info__ = (key,)
     accessor_name = 'get' + UpperCase(key)
     aq_self = aq_base(self)
     if getattr(aq_self, accessor_name, None) is not None:
@@ -1388,6 +1389,8 @@ class Base( CopyContainer,
   # Accessors are not workflow methods by default
   # Ping provides a dummy method to trigger automatic methods
   # XXX : maybe an empty edit is enough (self.edit())
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'ping')
   def ping(self):
     pass
 
@@ -1575,6 +1578,8 @@ class Base( CopyContainer,
     """
     return self
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getDocumentInstance')
   def getDocumentInstance(self):
     """
       Returns self
@@ -1594,6 +1599,8 @@ class Base( CopyContainer,
         assert mount_point._getMountedConnection(connection) is connection
         return mount_point._traverseToMountedRoot(connection.root(), None)
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'asSQLExpression')
   def asSQLExpression(self, strict_membership=0, table='category', base_category = None):
     """
       Any document can be used as a Category. It can therefore
@@ -1818,9 +1825,10 @@ class Base( CopyContainer,
   def _setValue(self, id, target, spec=(), filter=None, portal_type=(), keep_default=1,
                                   checked_permission=None):
     getRelativeUrl = self.getPortalObject().portal_url.getRelativeUrl
+        
     def cleanupCategory(path):
       # prevent duplicating base categories and storing "portal_categories/"
-      for start_string in ("%s/" % id, "portal_categories/"):
+      for start_string in ("portal_categories/", "%s/" % id):
         if path.startswith(start_string):
           path = path[len(start_string):]
       return path
@@ -2341,8 +2349,8 @@ class Base( CopyContainer,
     Returns the first non-null value from the following:
     - "getCompactTitle" type based method
     - short title
-    - reference
     - title
+    - reference
     - id
     """
     method = self._getTypeBasedMethod('getCompactTitle')
@@ -2352,8 +2360,8 @@ class Base( CopyContainer,
     if self.hasShortTitle():
       r = self.getShortTitle()
       if r: return r
-    return (self.getProperty('reference') or
-            getattr(self, '_baseGetTitle', str)() or
+    return (getattr(self, '_baseGetTitle', str)() or
+            self.getProperty('reference') or
             self.getId())
 
   security.declareProtected(Permissions.AccessContentsInformation,
@@ -2365,9 +2373,9 @@ class Base( CopyContainer,
     - "getCompactTitle" type based method
     - translated short title
     - short title
-    - reference
     - translated title
     - title
+    - reference
     - id
     """
     method = self._getTypeBasedMethod('getCompactTranslatedTitle')
@@ -2383,10 +2391,10 @@ class Base( CopyContainer,
       if r: return r
       r = self.getShortTitle()
       if r: return r
-    return (self.getProperty('reference') or
-            # No need to test existence since all Base instances have this method
+    return (# No need to test existence since all Base instances have this method
             # Also useful whenever title is calculated
             self._baseGetTranslatedTitle() or
+            self.getProperty('reference') or
             self.getId())
 
   # This method allows to sort objects in list is a more reasonable way
@@ -2677,6 +2685,20 @@ class Base( CopyContainer,
       return False
 
   security.declareProtected(Permissions.AccessContentsInformation,
+                            'isDeletable')
+  def isDeletable(self, check_relation):
+    """Test if object can be delete"""
+    container = self.getParentValue()
+    portal = container.getPortalObject()
+    return (portal.portal_workflow.isTransitionPossible(self, 'delete')
+      if container.portal_type != 'Preference' and
+        any(wf_id != 'edit_workflow'
+            for wf_id in getattr(aq_base(self), "workflow_history", ()))
+      else portal.portal_membership.checkPermission(
+        'Delete objects', container)
+      ) and not (check_relation and self.getRelationCountForDeletion())
+
+  security.declareProtected(Permissions.AccessContentsInformation,
                             'isDeleted')
   def isDeleted(self):
     """Test if the context is in 'deleted' state"""
@@ -2757,7 +2779,9 @@ class Base( CopyContainer,
     root_indexable = int(getattr(self.getPortalObject(),'isIndexable',1))
     if self.isIndexable and root_indexable:
       #LOG("immediateReindexObject",0,self.getRelativeUrl())
-      PortalContent.reindexObject(self, *args, **kw)
+      # Reindex result should not depend on the user
+      with super_user():
+        PortalContent.reindexObject(self, *args, **kw)
     else:
       pass
       #LOG("No reindex now",0,self.getRelativeUrl())
@@ -2946,9 +2970,14 @@ class Base( CopyContainer,
     if id[:1] != '_' and id[:3] != 'aq_':
       skin_info = SKINDATA.get(thread.get_ident())
       if skin_info is not None:
-        object = skinResolve(self.getPortalObject(), (skin_info[0], skin), id)
+        portal = self.getPortalObject()
+        _, skin_selection_name, _, _ = skin_info
+        object = skinResolve(portal, (skin_selection_name, skin), id)
         if object is not None:
-          return object.__of__(self)
+          # First wrap at the portal to set the owner of the executing script.
+          # This mimics the usual way to get an object from skin folders,
+          # and it's required when 'object' is an script with proxy roles.
+          return object.__of__(portal).__of__(self)
     raise AttributeError(id)
 
   def _getAcquireLocalRoles(self):
@@ -3048,12 +3077,16 @@ class Base( CopyContainer,
     return Error(**kw)
 
   security.declarePublic('log')
-  def log(self, description, content='', level=INFO):
-    """Put a log message """
+  def log(self, *args, **kw):
+    """Put a log message
+
+    See the warning in Products.ERP5Type.Log.log
+    Catchall parameters also make this method not publishable to avoid DoS.
+    """
     warnings.warn("The usage of Base.log is deprecated.\n"
                   "Please use Products.ERP5Type.Log.log instead.",
                   DeprecationWarning)
-    unrestrictedLog(description, content = content, level = level)
+    unrestrictedLog(*args, **kw)
 
   # Dublin Core Emulation for CMF interoperatibility
   # CMF Dublin Core Compatibility
@@ -3264,6 +3297,8 @@ class Base( CopyContainer,
     self._p_changed = 1
 
   # Helpers
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'getQuantityPrecisionFromResource')
   def getQuantityPrecisionFromResource(self, resource, d=2):
     """
       Provides a quick access to precision without accessing the resource

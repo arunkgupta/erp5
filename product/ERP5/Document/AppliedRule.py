@@ -170,8 +170,12 @@ class AppliedRule(XMLObject, ExplainableMixin):
     """
     return self.objectValues(portal_type=RuleMixin.movement_type)
 
-  def _migrateSimulationTree(self, get_matching_key,
-                             get_original_property_dict, root_rule=None):
+  def _migrateSimulationTree(self,
+                             get_matching_key,
+                             get_original_property_dict,
+                             root_rule=None,
+                             hook_before_edit=None,
+                             hook_after_edit=None):
     """Migrate an entire simulation tree in order to use new rules
 
     This must be called on a root applied rule, with interaction workflows
@@ -179,7 +183,7 @@ class AppliedRule(XMLObject, ExplainableMixin):
     - All related simulation trees are properly indexed (due to use of
       isSimulated). Unfortunately, this method temporarily unindexes everything,
       so you have to be careful when migrating several trees at once.
-    - All simulation trees it may depend on are already migrated. It is adviced
+    - All simulation trees it may depend on are already migrated. It is advised
       to first migrate all root applied rule for the first phase (usually
       order) and to continue respecting the order of phases.
 
@@ -208,10 +212,11 @@ class AppliedRule(XMLObject, ExplainableMixin):
     for history_item in workflow.getInfoFor(delivery, 'history', ()):
       if history_item['simulation_state'] in draft_state_list:
         continue
-      # Delivery is/was not is draft state
+      # Delivery is/was not in draft state
       resolveCategory = portal.portal_categories.resolveCategory
-      order_dict = {}
-      old_dict = {}
+      order_dict = {} # {new_sm: {key: [old_sm]}}
+      old_dict = {} # {root_delivery_line_relative_url: {key: [old_sm]},
+                    #  new_sm: old_sm}
       # Caller may want to drop duplicate SM, like a unbuilt SM if there's
       # already a built one, or one with no quantity. So first call
       # 'get_matching_key' on SM that would be kept. 'get_matching_key' would
@@ -233,13 +238,18 @@ class AppliedRule(XMLObject, ExplainableMixin):
                   x.sort(key=sort_sm)
               sm_dict.setdefault(k, []).extend(x)
               for x in x:
-                r = {}
+                # Group AR by rule.
+                r = {} # {rule: [[sm]]}
                 for x in x.objectValues():
                   sm_list = x.getMovementList()
                   if sm_list:
                     r.setdefault(x.getSpecialise(), []).append(sm_list)
+                # For each rule...
                 for x in r.values():
                   if len(x) > 1:
+                    # There were several AR applying the same rule.
+                    # Choose the one with a built SM (it will fail if
+                    # there are several such AR), fallback on the first.
                     x = [y for y in x if any(z.getDelivery()
                            for z in y)] or x[:1]
                   x, = x
@@ -264,7 +274,7 @@ class AppliedRule(XMLObject, ExplainableMixin):
                    'recursiveImmediateReindexObject',
                    'recursiveImmediateReindexSimulationMovement')):
         raise ConflictError
-      # Do not try to keep simulation tree for draft delivery
+      # Do not try to keep simulation tree for a draft delivery
       # if it was already out of sync.
       if delivery.getSimulationState() in draft_state_list and \
          any(x.getRelativeUrl() not in old_dict
@@ -342,12 +352,19 @@ class AppliedRule(XMLObject, ExplainableMixin):
                     kw['quantity'] = quantity - old.pop('quantity')
                     if new != old or sm.quantity != quantity:
                       raise NotImplementedError # quantity_unit/efficiency ?
-                  else:
-                    recorded_property_dict.update(new)
+                  recorded_property_dict.update(new)
+
+            if hook_before_edit is not None:
+              hook_before_edit(rule, old_sm, sm, edit_kw, recorded_property_dict)
+
             if recorded_property_dict:
               sm._recorded_property_dict = PersistentMapping(
                 recorded_property_dict)
             sm._edit(**edit_kw)
+
+            if hook_after_edit is not None:
+              hook_after_edit(rule, old_sm, sm)
+
             old_dict[sm] = old_sm
             sm = None
       deleted = old_dict.items()

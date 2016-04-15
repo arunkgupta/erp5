@@ -17,102 +17,76 @@
 from Shared.DC.ZRDB.sqlvar import SQLVar
 from Shared.DC.ZRDB import sqlvar
 from string import atoi,atof
-from types import StringType
-from Products.ERP5Type.PsycoWrapper import psyco
 from DateTime import DateTime
 
 def SQLVar_render(self, md):
-    name=self.__name__
     args=self.args
     t=args['type']
     try:
         expr=self.expr
-        if type(expr) is type(''): v=md[expr]
+        if type(expr) is str: v=md[expr]
         else: v=expr(md)
-    except:
-        if args.has_key('optional') and args['optional']:
+    except Exception:
+        if args.get('optional'):
             return 'null'
-        if type(expr) is not type(''):
+        if type(expr) is not str:
             raise
-        raise ValueError, 'Missing input variable, <em>%s</em>' % name
+        raise ValueError('Missing input variable, <em>%s</em>' % self.__name__)
+
+    if v is None and args.get('optional'):
+        return 'null'
 
     if t=='int':
         try:
-            if type(v) is StringType:
+            if type(v) is str:
                 if v[-1:]=='L':
                     v=v[:-1]
                 atoi(v)
-            else: v=str(int(v))
-        except:
-            if not v and args.has_key('optional') and args['optional']:
-                return 'null'
-            raise ValueError, (
-                'Invalid integer value for <em>%s</em>: %r' % (name, v))
+                return v
+            return str(int(v))
+        except Exception:
+            t = 'integer'
     elif t=='float':
         try:
-            if type(v) is StringType:
+            if type(v) is str:
                 if v[-1:]=='L':
                     v=v[:-1]
                 atof(v)
+                return v
             # ERP5 patch, we use repr that have better precision than str for
             # floats
-            else: v=repr(float(v))
-        except:
-            if not v and args.has_key('optional') and args['optional']:
-                return 'null'
-            raise ValueError, (
-                'Invalid floating-point value for <em>%s</em>: %r' % (name, v))
-    # Patched by yo
-    elif t=='datetime':
-        if v is None:
-            if args.has_key('optional') and args['optional']:
-                return 'null'
-            else:
-                raise ValueError, (
-                    'Invalid datetime value for <em>%s</em>: %r' % (name, v))
-
+            return repr(float(v))
+        except Exception:
+            t = 'floating-point'
+    elif t.startswith('datetime'):
+        # For subsecond precision, use 'datetime(N)' MySQL type,
+        # where N is the number of digits after the decimal point.
+        n = 0 if t == 'datetime' else int(t[9])
         try:
-            if getattr(v, 'ISO', None) is not None:
-                v=v.toZone('UTC').ISO()
-            else:
-                v = DateTime(v)
-                v=v.toZone('UTC').ISO()
-        except:
-            if not v and args.has_key('optional') and args['optional']:
-                return 'null'
-            raise ValueError, (
-                'Invalid datetime value for <em>%s</em>: %r' % (name, v))
-        v=md.getitem('sql_quote__',0)(v)
-    # End of patch
+            v = (v if isinstance(v, DateTime) else DateTime(v)).toZone('UTC')
+            return "'%s%s'" % (v.ISO(),
+                ('.%06u' % (v.micros() % 1000000))[:1+n] if n else '')
+        except Exception:
+            t = 'datetime'
+    elif t=='nb' and not v:
+        t = 'empty string'
     else:
-        # Patched by yo
-        if v is None:
-            if args.has_key('optional') and args['optional']:
-                return 'null'
-            else:
-                raise ValueError, (
-                    'Invalid string value for <em>%s</em>: %r' % (name, v))
-        # End of patch
-
-        if not isinstance(v, (str, unicode)):
-            v=str(v)
-        if not v and t=='nb':
-            if args.has_key('optional') and args['optional']:
-                return 'null'
-            else:
-                raise ValueError, (
-                    'Invalid empty string value for <em>%s</em>' % name)
-
-        v=md.getitem('sql_quote__',0)(v)
+        v = md.getitem('sql_quote__',0)(
+            v if isinstance(v, basestring) else str(v))
         #if find(v,"\'") >= 0: v=join(split(v,"\'"),"''")
         #v="'%s'" % v
+        return v
 
-    return v
-
-psyco.bind(SQLVar_render)
+    if args.get('optional'):
+        return 'null'
+    raise ValueError('Invalid %s value for <em>%s</em>: %r'
+                     % (t, self.__name__, v))
 
 # Patched by yo. datetime is added.
-valid_type={'int':1, 'float':1, 'string':1, 'nb': 1, 'datetime' : 1}.has_key
+
+valid_type = 'int', 'float', 'string', 'nb', 'datetime'
+valid_type += tuple(map('datetime(%s)'.__mod__, xrange(7)))
+valid_type = valid_type.__contains__
 
 SQLVar.render = SQLVar_render
 SQLVar.__call__ = SQLVar_render

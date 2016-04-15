@@ -42,6 +42,7 @@ from Products.CMFCore.CMFCatalogAware import CMFCatalogAware
 from Products.CMFCore.PortalFolder import ContentFilter
 
 from Products.ERP5Type.Base import Base
+from Products.ERP5Type.ConsistencyMessage import ConsistencyMessage
 from Products.ERP5Type.CopySupport import CopyContainer
 from Products.ERP5Type import PropertySheet
 from Products.ERP5Type.XMLExportImport import Folder_asXML
@@ -81,6 +82,7 @@ import os
 
 from zLOG import LOG, WARNING
 import warnings
+from urlparse import urlparse
 
 # variable to inform about migration process
 migration_process_lock = "_migration_in_progress"
@@ -501,6 +503,28 @@ class FolderMixIn(ExtensionClass.Base):
         raise AccessControl_Unauthorized(method_id)
     return self._recurseCallMethod(method_id, restricted=True, *args, **kw)
 
+  security.declarePublic('isURLAncestorOf')
+  def isURLAncestorOf(self, given_url):
+    """
+      This method returns True if the given_url is child of the url of
+      the document that the method is called on, False otherwise.
+
+      Note that the method compares the urls as strings and does
+      not access any document in given path,
+      hence it does not compute the inner acquisition path.
+    """
+    document_url = self.absolute_url()
+    parsed_given_url = urlparse(given_url)
+    parsed_document_url = urlparse(document_url)
+    # XXX note that the following check:
+    # - does not support relative urls
+    # - does not canonicalize domain name, e.g.
+    #   http://foo:80/erp5, http://foo/erp5 and http://foo:www/erp5
+    #   will not match.
+    return parsed_given_url.scheme == parsed_document_url.scheme and \
+        parsed_given_url.netloc == parsed_document_url.netloc and \
+        (parsed_given_url.path + '/').startswith((parsed_document_url.path + '/'))
+
 OFS_HANDLER = 0
 BTREE_HANDLER = 1
 HBTREE_HANDLER = 2
@@ -586,13 +610,15 @@ class Folder(CopyContainer, CMFBTreeFolder, CMFHBTreeFolder, Base, FolderMixIn):
     """ Create a new content """
     # Create data structure if none present
     return FolderMixIn.newContent(self, *args, **kw)
-
+      
+  security.declareProtected(Permissions.AccessContentsInformation, 'isBTree')
   def isBTree(self):
     """
     Tell if we are a BTree
     """
     return self._folder_handler == BTREE_HANDLER
-
+  
+  security.declareProtected(Permissions.AccessContentsInformation, 'isHBTree')
   def isHBTree(self):
     """
     Tell if we are a HBTree
@@ -1385,6 +1411,28 @@ class Folder(CopyContainer, CMFBTreeFolder, CMFHBTreeFolder, Base, FolderMixIn):
                    'recursiveImmediateReindexObject', None) is not None:
           c.recursiveImmediateReindexObject(**kw)
 
+  security.declareProtected(Permissions.ModifyPortalContent, 'moveObject')
+  def moveObject(self, idxs=None):
+      """
+          Reindex the object in the portal catalog.
+          If idxs is present, only those indexes are reindexed.
+          The metadata is always updated.
+
+          Also update the modification date of the object,
+          unless specific indexes were requested.
+
+          Passes is_object_moved to catalog to force
+          reindexing without creating new uid
+      """
+      if idxs is None: idxs = []
+      if idxs == []:
+          # Update the modification date.
+          if getattr(aq_base(self), 'notifyModified', _marker) is not _marker:
+              self.notifyModified()
+      catalog = getattr(self.getPortalObject(), 'portal_catalog', None)
+      if catalog is not None:
+          catalog.moveObject(self, idxs=idxs)
+
   security.declareProtected( Permissions.ModifyPortalContent,
                              'recursiveMoveObject' )
   def recursiveMoveObject(self):
@@ -1426,8 +1474,8 @@ class Folder(CopyContainer, CMFBTreeFolder, CMFHBTreeFolder, Base, FolderMixIn):
       if not btree_ok:
         # We must commit if we want to keep on recursing
         transaction.savepoint(optimistic=True)
-        error_list += [(self.getRelativeUrl(), 'BTree Inconsistency',
-                       199, '(fixed)')]
+        error_list += [ConsistencyMessage(
+          self, self.getRelativeUrl(), 'BTree Inconsistency (fixed)')]
     # Call superclass
     error_list += Base.checkConsistency(self, fixit=fixit, filter=filter, **kw)
     # We must commit before listing folder contents
@@ -1511,46 +1559,6 @@ class Folder(CopyContainer, CMFBTreeFolder, CMFHBTreeFolder, Base, FolderMixIn):
                                 o.getParentSQLExpression(table=table,
                                           strict_membership=strict_membership))
     return "( %s )" % result
-
-
-  def mergeContent(self,from_object=None,to_object=None, delete=1,**kw):
-    """
-    This method will merge two objects.
-
-    When we have to different objects wich represent the same content, we
-    may want to merge them. In this case, we want to be sure to report
-
-    """
-    if from_object is None or to_object is None:
-      return
-
-    from_object_related_object_list = self.portal_categories\
-                                          .getRelatedValueList(from_object)
-    to_object_url = to_object.getRelativeUrl()
-    from_object_url = from_object.getRelativeUrl()
-    corrected_list = []
-    for object in from_object_related_object_list:
-      #LOG('Folder.mergeContent, working on object:',0,object)
-      new_category_list = []
-      found = 0
-      for category in object.getCategoryList(): # so ('destination/person/1',...)
-        #LOG('Folder.mergeContent, working on category:',0,category)
-        linked_object_url = '/'.join(category.split('/')[1:])
-        if linked_object_url == from_object_url:
-          base_category = category.split('/')[0]
-          found = 1
-          new_category_list.append(base_category + '/' + to_object_url)
-        else:
-          new_category_list.append(category)
-      if found:
-        corrected_list.append(object)
-        object.setCategoryList(new_category_list)
-        object.immediateReindexObject()
-    if delete:
-      if len(from_object.portal_categories.getRelatedValueList(from_object))==0:
-        parent = from_object.getParentValue()
-        parent.manage_delObjects(from_object.getId())
-    return corrected_list
 
   security.declareProtected( Permissions.AccessContentsInformation,
                              'objectValues' )

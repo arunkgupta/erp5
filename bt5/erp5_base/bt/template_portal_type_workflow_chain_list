@@ -5,6 +5,7 @@ Assignment | edit_workflow
 Bank Account | edit_workflow
 Bank Account | validation_workflow
 Career | career_workflow
+Career | edit_workflow
 Chat Address | edit_workflow
 Credit Card | edit_workflow
 Credit Card | validation_workflow
@@ -23,6 +24,8 @@ Fax | edit_workflow
 File | document_conversion_interaction_workflow
 File | document_security_interaction_workflow
 File | edit_workflow
+Geographical Area | edit_workflow
+Geographical Location | edit_workflow
 Image | document_conversion_interaction_workflow
 Image | document_security_interaction_workflow
 Image | edit_workflow

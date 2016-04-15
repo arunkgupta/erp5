@@ -35,7 +35,6 @@ from zLOG import LOG
 from Products.ERP5Type.tests.Sequence import SequenceList
 from Products.ERP5.tests.testOrder import TestOrderMixin
 from DateTime import DateTime
-from Products.ERP5Type.Globals import PersistentMapping
 
 class TestPackingListMixin(TestOrderMixin):
   """
@@ -241,6 +240,7 @@ class TestPackingListMixin(TestOrderMixin):
     packing_list = sequence.get('packing_list')
     self.assertFalse(packing_list.isDivergent())
 
+  @UnrestrictedMethod
   def stepChangeOrderLineResource(self, sequence=None,
                                         sequence_list=None, **kw):
     """
@@ -263,6 +263,7 @@ class TestPackingListMixin(TestOrderMixin):
                              portal_type=self.packing_list_line_portal_type):
       packing_list_line.edit(resource_value=resource)
 
+  @UnrestrictedMethod
   def stepDecreaseOrderLineQuantity(self, sequence=None, sequence_list=None,
                                     **kw):
     """
@@ -1852,6 +1853,7 @@ class TestSolvingPackingList(TestPackingListMixin, ERP5TypeTestCase):
       solver_process_type_info.getTypeAllowedContentTypeList()
     self.added_target_solver_list = []
 
+  @UnrestrictedMethod
   def beforeTearDown(self, quiet=1, run=1):
     super(TestSolvingPackingList, self).beforeTearDown()
     self.portal.portal_rules.new_delivery_simulation_rule.quantity_tester.edit(
@@ -1887,18 +1889,21 @@ class TestSolvingPackingList(TestPackingListMixin, ERP5TypeTestCase):
     self.portal.portal_caches.clearAllCache()
     self.added_target_solver_list.append(solver_id)
 
+  @UnrestrictedMethod
   def stepSetUpAutomaticQuantityAcceptSolver(self, sequence=None, sequence_list=None):
     self._setUpTargetSolver('Automatic Quantity Accept Solver',
                             'AcceptSolver', ('quantity',))
     self.portal.portal_rules.new_delivery_simulation_rule.quantity_tester.edit(
       solver=('portal_solvers/Automatic Quantity Accept Solver',))
 
+  @UnrestrictedMethod
   def stepSetUpAutomaticQuantityAdoptSolver(self, sequence=None, sequence_list=None):
     self._setUpTargetSolver('Automatic Quantity Adopt Solver',
                             'AdoptSolver', ('quantity',))
     self.portal.portal_rules.new_delivery_simulation_rule.quantity_tester.edit(
       solver=('portal_solvers/Automatic Quantity Adopt Solver',))
 
+  @UnrestrictedMethod
   def stepSetUpMovementSplitSolver(self, sequence=None, sequence_list=None):
     self._setUpTargetSolver('Movement Split Solver',
                             'MovementSplitSolver', ())
@@ -2021,11 +2026,9 @@ class TestPurchasePackingListMixin(TestPackingListMixin):
 
   def test_subcontent_reindexing_packing_list_container_line_cell(self):
     """No need to check Containers in Purchase Packing List"""
-    pass
 
   def test_subcontent_reindexing_container_line_cell(self):
     """No need to check Containers in Purchase Packing List"""
-    pass
 
 class TestPurchasePackingList(TestPurchasePackingListMixin, TestPackingList):
   """Tests for purchase packing list.

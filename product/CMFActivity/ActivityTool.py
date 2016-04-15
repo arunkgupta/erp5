@@ -83,7 +83,6 @@ from traceback import format_list, extract_stack
 # to prevent from storing a state in the ZODB (and allows to restart...)
 active_threads = 0
 max_active_threads = 1 # 2 will cause more bug to appear (he he)
-is_initialized = False
 tic_lock = threading.Lock() # A RAM based lock to prevent too many concurrent tic() calls
 timerservice_lock = threading.Lock() # A RAM based lock to prevent TimerService spamming when busy
 is_running_lock = threading.Lock()
@@ -91,9 +90,6 @@ currentNode = None
 _server_address = None
 ROLE_IDLE = 0
 ROLE_PROCESSING = 1
-
-# Activity Registration
-activity_dict = {}
 
 # Logging channel definitions
 import logging
@@ -136,16 +132,13 @@ def activity_timing_method(method, args, kw):
 global_activity_buffer = defaultdict(dict)
 from thread import get_ident
 
-def registerActivity(activity):
-  # Must be rewritten to register
-  # class and create instance for each activity
-  #LOG('Init Activity', 0, str(activity.__name__))
-  activity_instance = activity()
-  activity_dict[activity.__name__] = activity_instance
-
 MESSAGE_NOT_EXECUTED = 0
 MESSAGE_EXECUTED = 1
 MESSAGE_NOT_EXECUTABLE = 2
+
+
+class SkippedMessage(Exception):
+  pass
 
 
 class Message(BaseMessage):
@@ -428,6 +421,8 @@ Named Parameters: %r
           raise Exception, 'Message execution failed, but there is no exception to explain it. This is a dummy exception so that one can track down why we end up here outside of an exception handling code path.'
         except Exception:
           exc_info = sys.exc_info()
+      elif exc_info[0] is SkippedMessage:
+        return
       if log:
         LOG('ActivityTool', WARNING, 'Could not call method %s on object %s. Activity created at:\n%s' % (self.method_id, self.object_path, self.call_traceback), error=exc_info)
         # push the error in ZODB error_log
@@ -438,6 +433,36 @@ Named Parameters: %r
 
   def getExecutionState(self):
     return self.is_executed
+
+class GroupedMessage(object):
+  __slots__ = 'object', '_message', 'result', 'exc_info'
+
+  def __init__(self, object, message):
+    self.object = object
+    self._message = message
+
+  args = property(lambda self: self._message.args)
+  kw = property(lambda self: self._message.kw)
+
+  def raised(self, exc_info=None):
+    self.exc_info = exc_info or sys.exc_info()
+    try:
+      del self.result
+    except AttributeError:
+      pass
+
+# XXX: Allowing restricted code to implement a grouping method is questionable
+#      but there already exist some.
+  __parent__ = property(lambda self: self.object) # for object
+  _guarded_writes = 1 # for result
+allow_class(GroupedMessage)
+
+# Activity Registration
+def activity_dict():
+  from Activity import SQLDict, SQLQueue
+  return {k: getattr(v, k)() for k, v in locals().iteritems()}
+activity_dict = activity_dict()
+
 
 class Method(object):
   __slots__ = (
@@ -598,7 +623,7 @@ class ActivityTool (Folder, UniqueObject):
     def __init__(self, id=None):
         if id is None:
           id = ActivityTool.id
-        return Folder.__init__(self, id)
+        Folder.__init__(self, id)
 
     # Filter content (ZMI))
     def filtered_meta_types(self, user=None):
@@ -624,30 +649,24 @@ class ActivityTool (Folder, UniqueObject):
                                                 sql_connection.connection_string)
         parent._setObject(connection_id, new_sql_connection)
 
+    security.declarePrivate('initialize')
     def initialize(self):
-      global is_initialized
-      from Activity import SQLQueue, SQLDict
-      # Initialize each queue
-      for activity in activity_dict.itervalues():
-        activity.initialize(self)
       self.maybeMigrateConnectionClass()
-      is_initialized = True
+      for activity in activity_dict.itervalues():
+        activity.initialize(self, clear=False)
 
     security.declareProtected(Permissions.manage_properties, 'isSubscribed')
     def isSubscribed(self):
-        """
-        return True, if we are subscribed to TimerService.
-        Otherwise return False.
-        """
-        service = getTimerService(self)
-        if not service:
-            LOG('ActivityTool', INFO, 'TimerService not available')
-            return False
-
+      """
+      return True, if we are subscribed to TimerService.
+      Otherwise return False.
+      """
+      service = getTimerService(self)
+      if service:
         path = '/'.join(self.getPhysicalPath())
-        if path in service.lisSubscriptions():
-            return True
-        return False
+        return path in service.lisSubscriptions()
+      LOG('ActivityTool', INFO, 'TimerService not available')
+      return False
 
     security.declareProtected(Permissions.manage_properties, 'subscribe')
     def subscribe(self, REQUEST=None, RESPONSE=None):
@@ -779,14 +798,17 @@ class ActivityTool (Folder, UniqueObject):
           url += urllib.quote('Cancel and invoke links visible')
           RESPONSE.redirect(url)
 
+    security.declarePrivate('manage_beforeDelete')
     def manage_beforeDelete(self, item, container):
         self.unsubscribe()
         Folder.inheritedAttribute('manage_beforeDelete')(self, item, container)
-
+    
+    security.declarePrivate('manage_afterAdd')
     def manage_afterAdd(self, item, container):
         self.subscribe()
         Folder.inheritedAttribute('manage_afterAdd')(self, item, container)
 
+    security.declareProtected(CMFCorePermissions.ManagePortal, 'getServerAddress')
     def getServerAddress(self):
         """
         Backward-compatibility code only.
@@ -807,6 +829,7 @@ class ActivityTool (Folder, UniqueObject):
             _server_address = '%s:%s' %(ip, port)
         return _server_address
 
+    security.declareProtected(CMFCorePermissions.ManagePortal, 'getCurrentNode')
     def getCurrentNode(self):
         """ Return current node identifier """
         global currentNode
@@ -827,7 +850,7 @@ class ActivityTool (Folder, UniqueObject):
           currentNode = self.getServerAddress()
         return currentNode
 
-    security.declarePublic('getDistributingNode')
+    security.declareProtected(CMFCorePermissions.ManagePortal, 'getDistributingNode')
     def getDistributingNode(self):
         """ Return the distributingNode """
         return self.distributingNode
@@ -882,7 +905,7 @@ class ActivityTool (Folder, UniqueObject):
       """Check we have been provided a good node name"""
       return isinstance(node_name, str)
 
-    security.declarePublic('manage_setDistributingNode')
+    security.declareProtected(CMFCorePermissions.ManagePortal, 'manage_setDistributingNode')
     def manage_setDistributingNode(self, distributingNode, REQUEST=None):
         """ set the distributing node """
         if not distributingNode or self._isValidNodeName(distributingNode):
@@ -956,6 +979,7 @@ class ActivityTool (Folder, UniqueObject):
           '/manageLoadBalancing?manage_tabs_message=' +
           urllib.quote(message))
 
+    security.declarePrivate('process_shutdown')
     def process_shutdown(self, phase, time_in_phase):
         """
           Prevent shutdown from happening while an activity queue is
@@ -968,6 +992,7 @@ class ActivityTool (Folder, UniqueObject):
           is_running_lock.acquire()
           LOG('CMFActivity', INFO, "Shutdown: Activities finished.")
 
+    security.declareProtected(CMFCorePermissions.ManagePortal, 'process_timer')
     def process_timer(self, tick, interval, prev="", next=""):
       """
       Call distribute() if we are the Distributing Node and call tic()
@@ -1027,10 +1052,6 @@ class ActivityTool (Folder, UniqueObject):
       """
         Distribute load
       """
-      # Initialize if needed
-      if not is_initialized:
-        self.initialize()
-
       # Call distribute on each queue
       for activity in activity_dict.itervalues():
         activity.distribute(aq_inner(self), node_count)
@@ -1053,10 +1074,6 @@ class ActivityTool (Folder, UniqueObject):
         tic_lock.release()
         raise RuntimeError, 'Too many threads'
       tic_lock.release()
-
-      # Initialize if needed
-      if not is_initialized:
-        self.initialize()
 
       inner_self = aq_inner(self)
 
@@ -1099,6 +1116,7 @@ class ActivityTool (Folder, UniqueObject):
           return True
       return False
 
+    security.declarePrivate('getActivityBuffer')
     def getActivityBuffer(self, create_if_not_found=True):
       """
         Get activtity buffer for this thread for this activity tool.
@@ -1135,8 +1153,6 @@ class ActivityTool (Folder, UniqueObject):
         return buffer
 
     def activateObject(self, object, activity=DEFAULT_ACTIVITY, active_process=None, **kw):
-      if not is_initialized:
-        self.initialize()
       if active_process is None:
         active_process_uid = None
       elif isinstance(active_process, str):
@@ -1177,8 +1193,6 @@ class ActivityTool (Folder, UniqueObject):
       return activity.unregisterMessage(activity_buffer, aq_inner(self), message)
 
     def flush(self, obj, invoke=0, **kw):
-      if not is_initialized:
-        self.initialize()
       self.getActivityBuffer()
       if isinstance(obj, tuple):
         object_path = obj
@@ -1306,18 +1320,21 @@ class ActivityTool (Folder, UniqueObject):
               active_obj = subobj.activate(activity=activity, **activity_kw)
               getattr(active_obj, alternate_method_id)(*m.args, **m.kw)
             else:
-              expanded_object_list.append([subobj, m.args, m.kw, None])
+              expanded_object_list.append(GroupedMessage(subobj, m))
         except:
           m.setExecutionState(MESSAGE_NOT_EXECUTED, context=self)
 
       expanded_object_list = sum(message_dict.itervalues(), [])
       try:
-        if len(expanded_object_list) > 0:
+        if expanded_object_list:
           traverse = self.getPortalObject().unrestrictedTraverse
           # FIXME: how to apply security here?
-          # NOTE: expanded_object_list[*][3] must be updated by the callee:
-          #       it must be deleted in case of failure, or updated with the
-          #       result to post on the active process otherwise.
+          # NOTE: The callee must update each processed item of
+          #       expanded_object_list, by setting:
+          #       - 'exc_info' in case of error
+          #       - 'result' otherwise, with None or the result to post
+          #          on the active process
+          #       Skipped item must not be touched.
           traverse(method_id)(expanded_object_list)
       except:
         # In this case, the group method completely failed.
@@ -1326,7 +1343,8 @@ class ActivityTool (Folder, UniqueObject):
           m.setExecutionState(MESSAGE_NOT_EXECUTED, exc_info, log=False)
         LOG('WARNING ActivityTool', 0,
             'Could not call method %s on objects %s' %
-            (method_id, [x[0] for x in expanded_object_list]), error=exc_info)
+            (method_id, [x.object for x in expanded_object_list]),
+            error=exc_info)
         error_log = getattr(self, 'error_log', None)
         if error_log is not None:
           error_log.raising(exc_info)
@@ -1335,22 +1353,24 @@ class ActivityTool (Folder, UniqueObject):
         for m, expanded_object_list in message_dict.iteritems():
           result_list = []
           for result in expanded_object_list:
-            if len(result) != 4:
-              break # message marked as failed by the group_method_id
-            elif result[3] is not None:
-              result_list.append(result)
+            try:
+              if result.result is not None:
+                result_list.append(result)
+            except AttributeError:
+              exc_info = getattr(result, "exc_info", (SkippedMessage,))
+              break # failed or skipped message
           else:
             try:
               if result_list and m.active_process:
                 active_process = traverse(m.active_process)
                 for result in result_list:
-                  m.activateResult(active_process, result[3], result[0])
+                  m.activateResult(active_process, result.result, result.object)
             except:
-              pass
+              exc_info = None
             else:
               m.setExecutionState(MESSAGE_EXECUTED, context=self)
               continue
-          m.setExecutionState(MESSAGE_NOT_EXECUTED, context=self)
+          m.setExecutionState(MESSAGE_NOT_EXECUTED, exc_info, context=self)
       if self.activity_tracking:
         activity_tracking_logger.info('invoked group messages')
 
@@ -1358,16 +1378,25 @@ class ActivityTool (Folder, UniqueObject):
     class dummyGroupMethod(object):
       def __bobo_traverse__(self, REQUEST, method_id):
         def group_method(message_list):
-          for m in message_list:
-            m[3] = getattr(m[0], method_id)(*m[1], **m[2])
+          user_name = None
+          sm = getSecurityManager()
+          try:
+            for m in message_list:
+              message = m._message
+              if user_name != message.user_name:
+                user_name = message.user_name
+                message.changeUser(user_name, m.object)
+              m.result = getattr(m.object, method_id)(*m.args, **m.kw)
+          except Exception:
+            m.raised()
+          finally:
+            setSecurityManager(sm)
         return group_method
     dummyGroupMethod = dummyGroupMethod()
 
     def newMessage(self, activity, path, active_process,
                    activity_kw, method_id, *args, **kw):
       # Some Security Cheking should be made here XXX
-      if not is_initialized:
-        self.initialize()
       self.getActivityBuffer()
       activity_dict[activity].queueMessage(aq_inner(self),
         Message(path, active_process, activity_kw, method_id, args, kw,
@@ -1427,68 +1456,16 @@ class ActivityTool (Folder, UniqueObject):
 
     security.declareProtected( CMFCorePermissions.ManagePortal,
                                'manageClearActivities' )
-    def manageClearActivities(self, keep=1, REQUEST=None):
+    def manageClearActivities(self, keep=1, RESPONSE=None):
       """
-        Clear all activities and recreate tables.
+        Recreate tables, clearing all activities
       """
-      folder = self.getPortalObject().portal_skins.activity
+      for activity in activity_dict.itervalues():
+        activity.initialize(self, clear=True)
 
-      # Obtain all pending messages.
-      message_list_dict = {}
-      if keep:
-        for activity in activity_dict.itervalues():
-          if hasattr(activity, 'dumpMessageList'):
-            try:
-              message_list_dict[activity.__class__.__name__] =\
-                                    activity.dumpMessageList(self)
-            except ConflictError:
-              raise
-            except:
-              LOG('ActivityTool', WARNING,
-                  'could not dump messages from %s' %
-                  (activity,), error=sys.exc_info())
-
-      if getattr(folder, 'SQLDict_createMessageTable', None) is not None:
-        try:
-          folder.SQLDict_dropMessageTable()
-        except ConflictError:
-          raise
-        except:
-          LOG('CMFActivity', WARNING,
-              'could not drop the message table',
-              error=sys.exc_info())
-        folder.SQLDict_createMessageTable()
-
-      if getattr(folder, 'SQLQueue_createMessageTable', None) is not None:
-        try:
-          folder.SQLQueue_dropMessageTable()
-        except ConflictError:
-          raise
-        except:
-          LOG('CMFActivity', WARNING,
-              'could not drop the message queue table',
-              error=sys.exc_info())
-        folder.SQLQueue_createMessageTable()
-
-      # Reactivate the messages.
-      for activity, message_list in message_list_dict.iteritems():
-        for m in message_list:
-          try:
-            m.reactivate(aq_inner(self), activity=activity)
-          except ConflictError:
-            raise
-          except:
-            LOG('ActivityTool', WARNING,
-                'could not reactivate the message %r, %r' %
-                (m.object_path, m.method_id), error=sys.exc_info())
-
-      if REQUEST is not None:
-        message = 'Activities%20Cleared'
-        if keep:
-          message = 'Tables%20Recreated'
-        return REQUEST.RESPONSE.redirect(
-            '%s/manageActivitiesAdvanced?manage_tabs_message=%s' % (
-              self.absolute_url(), message))
+      if RESPONSE is not None:
+        return RESPONSE.redirect(self.absolute_url_path() +
+          '/manageActivitiesAdvanced?manage_tabs_message=Activities%20Cleared')
 
     security.declarePublic('getMessageTempObjectList')
     def getMessageTempObjectList(self, **kw):
@@ -1508,9 +1485,6 @@ class ActivityTool (Folder, UniqueObject):
       """
         List messages waiting in queues
       """
-      # Initialize if needed
-      if not is_initialized:
-        self.initialize()
       if activity:
         return activity_dict[activity].getMessageList(aq_inner(self), **kw)
 
@@ -1566,8 +1540,6 @@ class ActivityTool (Folder, UniqueObject):
 
     security.declarePrivate('getDependentMessageList')
     def getDependentMessageList(self, message, validator_id, validation_value):
-      if not is_initialized:
-        self.initialize()
       message_list = []
       method_id = "_validate_" + validator_id
       for activity in activity_dict.itervalues():
@@ -1580,8 +1552,6 @@ class ActivityTool (Folder, UniqueObject):
 
     # Required for tests (time shift)
     def timeShift(self, delay):
-      if not is_initialized:
-        self.initialize()
       for activity in activity_dict.itervalues():
         activity.timeShift(aq_inner(self), delay)
 

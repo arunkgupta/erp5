@@ -49,27 +49,35 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>"""\n
-  This scripts sets up automatically default parameters\n
-  for a newly created Web Site\n
-"""\n
-# Set Web Site layout to default one\n
-context.setContainerLayout(\'erp5_web_layout\')\n
-context.setContentLayout(\'erp5_web_content_layout\')\n
-context.setLayoutConfigurationFormId(\'WebSection_viewDefaultThemeConfiguration\')\n
-language_list = context.Localizer.get_supported_languages()\n
-context.setAvailableLanguageSet(language_list)\n
-context.setStaticLanguageSelection(1)\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>*args, **kw</string> </value>
         </item>
         <item>
+            <key> <string>guard</string> </key>
+            <value>
+              <persistent> <string encoding="base64">AAAAAAAAAAI=</string> </persistent>
+            </value>
+        </item>
+        <item>
             <key> <string>id</string> </key>
             <value> <string>WebSite_init</string> </value>
+        </item>
+      </dictionary>
+    </pickle>
+  </record>
+  <record id="2" aka="AAAAAAAAAAI=">
+    <pickle>
+      <global name="Guard" module="Products.DCWorkflow.Guard"/>
+    </pickle>
+    <pickle>
+      <dictionary>
+        <item>
+            <key> <string>roles</string> </key>
+            <value>
+              <tuple>
+                <string>Owner</string>
+              </tuple>
+            </value>
         </item>
       </dictionary>
     </pickle>

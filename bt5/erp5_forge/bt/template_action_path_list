@@ -10,6 +10,7 @@ Bug | view
 Business Template | clean_vcs_bt
 Business Template | conflicted_files
 Business Template | create_report
+Business Template | create_skin_folder
 Business Template | create_working_copy
 Business Template | git_commit
 Business Template | manage_field_library
@@ -33,6 +34,7 @@ Glossary Module | view
 Glossary Term | view
 Preference | vcs
 Template Tool | bt_vcs_history
+Template Tool | migrate_business_template_list
 Template Tool | search_portal_type
 Types Tool | role_information_list_view
 portal_actions | generate_pot_file

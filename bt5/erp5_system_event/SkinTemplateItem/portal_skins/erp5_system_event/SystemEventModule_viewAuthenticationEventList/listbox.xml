@@ -90,6 +90,10 @@
                           <string>Destination</string>
                         </tuple>
                         <tuple>
+                          <string>resource_title</string>
+                          <string>Resource</string>
+                        </tuple>
+                        <tuple>
                           <string>creation_date</string>
                           <string>Creation Date</string>
                         </tuple>

@@ -151,7 +151,7 @@ def _getPersistentMemcachedServerDict():
   port = os.environ.get('persistent_memcached_server_port', '12121')
   return dict(hostname=hostname, port=port)
 
-def _createTestPromiseConfigurationFile(promise_path):
+def _createTestPromiseConfigurationFile(promise_path, bt5_repository_path_list=None):
   kumofs_url = "memcached://%(hostname)s:%(port)s/" % \
                              _getVolatileMemcachedServerDict()
   memcached_url = "memcached://%(hostname)s:%(port)s/" % \
@@ -164,6 +164,11 @@ def _createTestPromiseConfigurationFile(promise_path):
   promise_config.set('external_service', 'cloudooo_url', cloudooo_url)
   promise_config.set('external_service', 'memcached_url',memcached_url)
   promise_config.set('external_service', 'kumofs_url', kumofs_url)
+
+  if bt5_repository_path_list is not None:
+    promise_config.add_section('portal_templates')
+    promise_config.set('portal_templates', 'repository', 
+                                   ' '.join(bt5_repository_path_list))
 
   if os.environ.get('TEST_CA_PATH') is not None:
     promise_config.add_section('portal_certificate_authority')
@@ -267,10 +272,11 @@ class ERP5TypeTestCaseMixin(ProcessingNodeTestCase, PortalTestCase):
     def _restoreMailHost(self):
       """Restore original Mail Host
       """
-      cls = self.portal.MailHost.__class__
-      if cls.__bases__[0] is DummyMailHostMixin:
-        cls.__bases__ = cls.__bases__[1:]
-        pmc_init_of(cls)
+      if self.portal is not None:
+        cls = self.portal.MailHost.__class__
+        if cls.__bases__[0] is DummyMailHostMixin:
+          cls.__bases__ = cls.__bases__[1:]
+          pmc_init_of(cls)
 
     def pinDateTime(self, date_time):
       # pretend time has stopped at a certain date (i.e. the test runs
@@ -444,13 +450,8 @@ class ERP5TypeTestCaseMixin(ProcessingNodeTestCase, PortalTestCase):
     def _getBTPathAndIdList(template_list):
       bootstrap_path = os.environ.get('erp5_tests_bootstrap_path') or \
         ERP5Site.getBootstrapDirectory()
-      bt5_path = os.environ.get('erp5_tests_bt5_path')
-      if bt5_path:
-        bt5_path_list = bt5_path.split(',')
-        bt5_path_list += [os.path.join(path, "*") for path in bt5_path_list]
-      else:
-        bt5_path = os.path.join(instancehome, 'bt5')
-        bt5_path_list = bt5_path, os.path.join(bt5_path, '*')
+      bt5_path_list = os.environ['erp5_tests_bt5_path'].split(',')
+      bt5_path_list += [os.path.join(path, "*") for path in bt5_path_list]
 
       def search(path, template):
         urltype, url = urllib.splittype(path + '/' + template)
@@ -492,7 +493,22 @@ class ERP5TypeTestCaseMixin(ProcessingNodeTestCase, PortalTestCase):
                            % ', '.join(not_found_list))
       return new_template_list
 
-    def setupAutomaticBusinessTemplateRepository(self,
+    def _getBusinessRepositoryPathList(self, searchable_business_template_list=None):
+      if searchable_business_template_list is None:
+        searchable_business_template_list = ["erp5_base"]
+
+      template_list = []
+      for bt_id in searchable_business_template_list:
+        bt_template_list = self._getBTPathAndIdList([bt_id])
+        if len(bt_template_list):
+          template_list.append(bt_template_list[0])
+
+      if len(template_list) > 0:
+        return ["/".join(x[0].split("/")[:-1]) for x in template_list]
+
+      return []
+
+    def setupAutomaticBusinessTemplateRepository(self, accept_public=True,
                               searchable_business_template_list=("erp5_base",)):
       template_tool = self.portal.portal_templates
       bt_set = set(searchable_business_template_list).difference(x['title']
@@ -503,7 +519,14 @@ class ERP5TypeTestCaseMixin(ProcessingNodeTestCase, PortalTestCase):
           genbt5list=1)
 
     def assertSameSet(self, a, b, msg=None):
-      self.assertSetEqual(set(a), set(b), msg)
+      if not msg:
+        try:
+          from pprint import pformat
+        except ImportError:
+          msg='%r != %r' % (sorted(a), sorted(b))
+        else:
+          msg='\n%s\n!=\n%s' % (pformat(sorted(a)), pformat(sorted(b)))
+      self.assertEqual(set(a), set(b), msg)
     failIfDifferentSet = assertSameSet
 
     def assertHasAttribute(self, obj, attribute, msg=None):
@@ -739,6 +762,7 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
       light_install = self.enableLightInstall()
       self._installBusinessTemplateList(new_template_list,
                                         light_install=light_install)
+      self.portal.ERP5Site_updateTranslationTable()
       self.tic()
 
     def uninstallBusinessTemplate(self, *template_list):
@@ -771,20 +795,8 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
       update_business_templates = os.environ.get('update_business_templates') is not None
       erp5_load_data_fs = int(os.environ.get('erp5_load_data_fs', 0))
       if update_business_templates and erp5_load_data_fs:
-        update_only = os.environ.get('update_only', None)
         template_list[:0] = (erp5_catalog_storage, 'erp5_property_sheets',
                              'erp5_core', 'erp5_xhtml_style')
-        # Update only specified business templates, regular expression
-        # can be used.
-        if update_only is not None:
-          update_only_list = update_only.split(',')
-          matching_template_list = []
-          # First parse the template list in order to keep same order
-          for business_template in template_list:
-            for expression in update_only_list:
-              if re.search(expression, business_template):
-                matching_template_list.append(business_template)
-          template_list = matching_template_list
 
       # keep a mapping type info name -> property sheet list, to remove them in
       # tear down.
@@ -819,12 +831,16 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
       """
       return ()
 
-    def loadPromise(self):
+    def loadPromise(self, searchable_business_template_list=None):
       """ Create promise configuration file and load it into configuration
+          
       """
+      bt5_repository_path_list = self._getBusinessRepositoryPathList(
+                                        searchable_business_template_list)
+
       promise_path = os.path.join(instancehome, "promise.cfg")
       ZopeTestCase._print('Adding Promise at %s...\n' % promise_path)
-      _createTestPromiseConfigurationFile(promise_path)
+      _createTestPromiseConfigurationFile(promise_path, bt5_repository_path_list)
       config.product_config["/%s" % self.getPortalName()] = \
          {"promise_path": promise_path}
 
@@ -855,21 +871,51 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
       if portal_memcached.default_memcached_plugin.getUrlString() != url_string:
         portal_memcached.default_memcached_plugin.setUrlString(url_string)
 
+    def _clearActivity(self, quiet=0):
+      """Clear activities if `erp5_tests_recreate_catalog` environment variable is
+      set. """
+      if int(os.environ.get('erp5_tests_recreate_catalog', 0)):
+        _start = time.time()
+        if not quiet:
+          ZopeTestCase._print('\nRecreating activity tables ... ')
+        portal = self.getPortal()
+        portal.portal_activities.manageClearActivities()
+        self.commit()
+        if not quiet:
+          ZopeTestCase._print('done (%.3fs)\n' % (time.time() - _start,))
+
     def _recreateCatalog(self, quiet=0):
-      """Clear activities and catalog and recatalog everything.
-      Test runner can set `erp5_tests_recreate_catalog` environnement variable,
-      in that case we have to clear catalog. """
+      """Recreate catalog if `erp5_tests_recreate_catalog` environment variable is
+      set. """
+      if int(os.environ.get('erp5_tests_recreate_catalog', 0)):
+        _start = time.time()
+        if not quiet:
+          ZopeTestCase._print('\nRecreating catalog ... ')
+        portal = self.getPortal()
+        portal.portal_catalog.manage_catalogClear()
+        self.commit()
+        if not quiet:
+          ZopeTestCase._print('done (%.3fs)\n' % (time.time() - _start,))
+
+    def _updateTranslationTable(self, quiet=0):
+      _start = time.time()
+      if not quiet:
+        ZopeTestCase._print('\nUpdating translation table ... ')
+        self.portal.ERP5Site_updateTranslationTable()
+        self.commit()
+        if not quiet:
+          ZopeTestCase._print('done (%.3fs)\n' % (time.time() - _start,))
+
+    def _reindexSite(self, quiet=0):
+      """Reindex site if `erp5_tests_recreate_catalog` environment variable is
+      set. """
       if int(os.environ.get('erp5_tests_recreate_catalog', 0)):
         try:
           _start = time.time()
           if not quiet:
-            ZopeTestCase._print('\nRecreating catalog ... ')
+            ZopeTestCase._print('\nReindexing site ... ')
           portal = self.getPortal()
-          portal.portal_activities.manageClearActivities()
-          portal.portal_catalog.manage_catalogClear()
-          self.commit()
           portal.ERP5Site_reindexAll()
-          self.tic()
           if not quiet:
             ZopeTestCase._print('done (%.3fs)\n' % (time.time() - _start,))
         finally:
@@ -880,11 +926,28 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
                                      quiet=True):
       template_tool = self.portal.portal_templates
       update_business_templates = os.environ.get('update_business_templates') is not None
+      erp5_load_data_fs = int(os.environ.get('erp5_load_data_fs', 0))
       BusinessTemplate_getModifiedObject = aq_base(
         getattr(self.portal, 'BusinessTemplate_getModifiedObject', None))
 
-      # Add some business templates
+      update_only = os.environ.get('update_only', ())
+      if update_only:
+        update_only = update_only.split(',')
+
+      def _isUpdateOnlyBusinessTemplate(bt_title):
+        for expression in update_only:
+          if re.search(expression, bt_title):
+            return True
+
+        return False
+
       for url, bt_title in business_template_list:
+        if (update_business_templates and
+            erp5_load_data_fs and
+            update_only and
+            not _isUpdateOnlyBusinessTemplate(bt_title)):
+          continue
+
         start = time.time()
         get_install_kw = False
         if bt_title in template_tool.getInstalledBusinessTemplateTitleList():
@@ -909,13 +972,17 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
         install_kw = None
         if get_install_kw:
           install_kw = {}
-          listbox_object_list = BusinessTemplate_getModifiedObject.__of__(bt)()
+          listbox_object_list = BusinessTemplate_getModifiedObject.__of__(bt)(
+            check_dependencies=False)
           for listbox_line in listbox_object_list:
             install_kw[listbox_line.object_id] = listbox_line.choice_item_list[0][1]
         bt.install(light_install=light_install,
                    object_to_update=install_kw,
-                   update_catalog=bt.isCatalogUpdatable(),
-                   update_translation=1)
+                   check_dependencies=False)
+        if bt.isCatalogUpdatable() and (
+            int(os.environ.get('erp5_tests_recreate_catalog', 0)) or \
+            int(os.environ.get('erp5_load_data_fs', 0)) == 0):
+          self.portal.portal_catalog.manage_catalogClear()
         # Release locks
         self.commit()
         if not quiet:
@@ -1006,10 +1073,12 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
               self.loadPromise()
 
             self._updateConnectionStrings()
-            self._recreateCatalog()
+            self._clearActivity()
             self._installBusinessTemplateList(business_template_list,
                                               light_install=light_install,
                                               quiet=quiet)
+            self._recreateCatalog()
+            self._updateTranslationTable()
             self._updateConversionServerConfiguration()
             self._updateMemcachedConfiguration()
             # Create a Manager user at the Portal level
@@ -1019,6 +1088,7 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
             user = uf.getUserById('ERP5TypeTestCase').__of__(uf)
 
             self._callSetUpOnce()
+            self._reindexSite()
 
             # Enable reindexing
             # Do hot reindexing # Does not work
@@ -1027,7 +1097,6 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
               portal.portal_catalog.manage_hotReindexAll()
 
             portal.portal_types.resetDynamicDocumentsOnceAtTransactionBoundary()
-            self.commit()
             self.tic(not quiet)
 
             # Log out
@@ -1078,7 +1147,7 @@ class ERP5TypeCommandLineTestCase(ERP5TypeTestCaseMixin):
             if m.processing_node < -1:
               self.abort()
               count = portal_activities.countMessage()
-              portal_activities.manageClearActivities(keep=False)
+              portal_activities.manageClearActivities()
               self.commit()
               ZopeTestCase._print(' (dropped %d left-over activity messages) '
                                   % count)
@@ -1163,16 +1232,24 @@ class ERP5ReportTestCase(ERP5TypeTestCase):
     in the report_section.
     """
     result = None
-    here = report_section.getObject(self.portal)
-    report_section.pushReport(self.portal)
-    form = getattr(here, report_section.getFormId())
-    self.portal.REQUEST['here'] = here
-    if form.has_field('listbox'):
-      result = form.listbox.get_value('default',
-                                      render_format='list',
-                                      REQUEST=self.portal.REQUEST)
-    report_section.popReport(self.portal)
-    return result
+    # Use an independent request, because this is what happens when using
+    # deferred style
+    request_form = self.portal.REQUEST.form
+    try:
+      # XXX maybe there is better API than just replacing the dict
+      self.portal.REQUEST.form = dict()
+      here = report_section.getObject(self.portal)
+      report_section.pushReport(self.portal)
+      form = getattr(here, report_section.getFormId())
+      self.portal.REQUEST['here'] = here
+      if form.has_field('listbox'):
+        result = form.listbox.get_value('default',
+                                        render_format='list',
+                                        REQUEST=self.portal.REQUEST)
+      return result
+    finally:
+      report_section.popReport(self.portal)
+      self.portal.REQUEST.form = request_form
 
   def checkLineProperties(self, line, **kw):
     """Check properties of a report line.
@@ -1318,7 +1395,7 @@ def fortify():
   def __init__(self, value, *args, **kw):
     # this will raise TypeError if you try to cache a persistent object
     dumps(value)
-    return self.__original_init__(value, *args, **kw)
+    self.__original_init__(value, *args, **kw)
   CacheEntry.__init__ = __init__
 
   # randomize priorities of activities in a deterministic way

@@ -92,8 +92,8 @@
                           <string>Material</string>
                         </tuple>
                         <tuple>
-                          <string>industrial_phase</string>
-                          <string>Industrial Phase</string>
+                          <string>trade_phase</string>
+                          <string>Trade Phase</string>
                         </tuple>
                         <tuple>
                           <string>quantity</string>

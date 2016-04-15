@@ -49,9 +49,8 @@ class TestXHTMLMixin(ERP5TypeTestCase):
 
   # some forms have intentionally empty listbox selections like RSS generators
   FORM_LISTBOX_EMPTY_SELECTION_PATH_LIST = ['erp5_web_widget_library/WebSection_viewContentListAsRSS']
-  IGNORE_FILE_LIST = ['require.js','require.min.js','wz_dragdrop.js', 'jio.js',
-      'jio_sha256.amd.js', 'renderjs.js', 'rsvp.js',
-      'gadget_activity_watcher.js', 'handlebars.js']
+  IGNORE_FILE_LIST = ['require.js','require.min.js','wz_dragdrop.js',
+                      'renderjs.js','jio.js','rsvp.js','handlebars.js']
 
   def changeSkin(self, skin_name):
     """
@@ -169,8 +168,8 @@ class TestXHTMLMixin(ERP5TypeTestCase):
     for script_path, script in skins_tool.ZopeFind(
               skins_tool, obj_metatypes=['File','DTML Method','DTML Document'], search_sub=1):
       is_required_check_path = True
-      ignore_bts = ['erp5_jquery','erp5_fckeditor','erp5_xinha_editor',
-                    'erp5_jquery_ui', 'erp5_ace_editor']
+      ignore_bts = ['erp5_jquery','erp5_fckeditor','erp5_xinha_editor', 'erp5_svg_editor',
+                    'erp5_jquery_ui', 'erp5_ace_editor', 'erp5_code_mirror']
       if script_path.endswith('.js'):
         for ignore_bt_name in ignore_bts:
           if script_path.startswith(ignore_bt_name):
@@ -193,6 +192,57 @@ class TestXHTMLMixin(ERP5TypeTestCase):
     for path in path_list:
       check_path = '%s/%s' % (portal_skins_path, path)
       jsl(check_path)
+
+
+  def test_html_file(self):
+    path_list = os.environ.get('CGI_PATH',
+    '/usr/lib/cgi-bin:/usr/lib/cgi-bin/w3c-markup-validator').split(os.pathsep)
+    for path in path_list:
+      validator_path = os.path.join(path, 'check')
+      if os.path.exists(validator_path):
+        validator = W3Validator(validator_path, show_warnings)
+        break
+    if validator is not None:
+      skins_tool = self.portal.portal_skins
+      path_list = []
+      for script_path, script in skins_tool.ZopeFind(
+                skins_tool, obj_metatypes=['File'], search_sub=1):
+        is_required_check_path = True
+        ignore_bts = ['erp5_jquery','erp5_fckeditor','erp5_xinha_editor', 'erp5_svg_editor', 'erp5_jquery_ui']
+        if script_path.endswith('.html'):
+          for ignore_bt_name in ignore_bts:
+            if  script_path.startswith(ignore_bt_name):
+              is_required_check_path = False
+              break;
+          if is_required_check_path:
+            path_list.append(script_path)
+
+      def validate_html_file(source_path):
+        message = ['Using %s validator to parse the file "%s"'
+                   ' with warnings%sdisplayed :'
+                  % (validator.name, source_path,
+                     validator.show_warnings and ' ' or ' NOT ')]
+        source = self.publish(source_path).getBody()
+        result_list_list = validator.getErrorAndWarningList(source)
+        severity_list = ['Error']
+        if validator.show_warnings:
+          severity_list.append('Warning')
+        for i, severity in enumerate(severity_list):
+          for line, column, msg in result_list_list[i]:
+            if line is None and column is None:
+              message.append('%s: %s' % (severity, msg))
+            else:
+              message.append('%s: line %s column %s : %s' %
+                             (severity, line, column, msg))
+        return len(message) == 1, '\n'.join(message)
+
+      def html_file(check_path):
+        self.assert_(*validate_html_file(source_path=check_path))
+
+      portal_skins_path = '%s/portal_skins' % self.portal.getId()
+      for path in path_list:
+        check_path = '%s/%s' % (portal_skins_path, path)
+        html_file(check_path)
 
   def test_PythonScriptSyntax(self):
     """
@@ -304,10 +354,10 @@ class TestXHTML(TestXHTMLMixin):
       'erp5_core_proxy_field_legacy',
       'erp5_base',
       'erp5_simulation',
+      'erp5_pdm',
       'erp5_trade',
 
       'erp5_pdf_editor',
-      'erp5_pdm',
       'erp5_accounting',
       'erp5_invoicing',
 

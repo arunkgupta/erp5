@@ -74,8 +74,13 @@ class StringEquivalenceTester(Predicate, EquivalenceTesterMixin):
     # XXX do we have configurable parameter for this divergence tester ?
     # like ambiguity...
     if decision_value != prevision_value:
+      property_name = getattr(self, 'getTranslatedTestedPropertyTitle', lambda: None)() or \
+                      tested_property
       return (
         prevision_value, decision_value,
-        'The value of ${property_name} is different between decision and prevision.',
-        dict(property_name=tested_property))
+        'There is difference of ${property_name} between decision \
+          ${decision_value} and prevision ${prevision_value}',
+        dict(property_name=property_name,
+             decision_value=decision_value,
+             prevision_value=prevision_value))
     return None

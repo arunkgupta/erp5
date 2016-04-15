@@ -140,20 +140,19 @@ class DomainTool(BaseTool):
                     Query(**{equality: value}),
                     ComplexQuery(
                       ComplexQuery(
-                        Query(**{range_min: dict(query=value, range='ngt',)}),
+                        Query(**{range_min: {'query': value, 'range': 'ngt'}}),
                         Query(**{range_max: None}),
-                        logical_operator='AND',),
+                        logical_operator='AND'),
                       ComplexQuery(
                         Query(**{range_min: None}),
-                        Query(**{range_max: dict(query=value, range='min',)}),
-                        logical_operator='AND',),
+                        Query(**{range_max: {'query': value, 'range': 'min'}}),
+                        logical_operator='AND'),
                       ComplexQuery(
-                        Query(**{range_min: dict(query=value, range='ngt',)}),
-                        Query(**{range_max: dict(query=value, range='min',)}),
-                        logical_operator='AND',),
-                      logical_operator='OR',),
-                    logical_operator='OR',
-                    ),
+                        Query(**{range_min: {'query': value, 'range': 'ngt'}}),
+                        Query(**{range_max: {'query': value, 'range': 'min'}}),
+                        logical_operator='AND'),
+                      logical_operator='OR'),
+                    logical_operator='OR'),
                   logical_operator='OR')
 
             query_list.append(query)
@@ -360,6 +359,8 @@ class DomainTool(BaseTool):
         return mapped_value
 
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getChildDomainValueList')
     def getChildDomainValueList(self, parent, **kw):
       """
       Return child domain objects already present adn thois generetaded dynamically
@@ -371,6 +372,8 @@ class DomainTool(BaseTool):
       return object_list
 
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getDomainByPath')
     def getDomainByPath(self, path, default=_MARKER):
       """
       Return the domain object for a given path

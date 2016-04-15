@@ -27,6 +27,8 @@
 #
 ##############################################################################
 
+from AccessControl import ClassSecurityInfo
+from Products.ERP5Type import Permissions
 from Products.ERP5.mixin.solver import ConfigurablePropertySolverMixin
 
 class AcceptSolver(ConfigurablePropertySolverMixin):
@@ -35,9 +37,11 @@ class AcceptSolver(ConfigurablePropertySolverMixin):
   meta_type = 'ERP5 Accept Solver'
   portal_type = 'Accept Solver'
 
-  # ISolver Implementation
-  # XXX-Leo: Needs security declaration! It's currently public.
-  def solve(self, activate_kw=None):
+  # Declarative security
+  security = ClassSecurityInfo()
+  security.declareObjectProtected(Permissions.AccessContentsInformation)
+
+  def _solve(self, activate_kw=None):
     """
     Adopt new property to simulation movements, with keeping the
     original one recorded.
@@ -82,5 +86,5 @@ class AcceptSolver(ConfigurablePropertySolverMixin):
     for property_id, value in value_dict.iteritems():
       if not simulation_movement.isPropertyRecorded(property_id):
         simulation_movement.recordProperty(property_id)
-      simulation_movement.setMappedProperty(property_id, value)
+      simulation_movement.setProperty(property_id, value)
     simulation_movement.expand(activate_kw=activate_kw)

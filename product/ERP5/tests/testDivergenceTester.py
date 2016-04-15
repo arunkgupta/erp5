@@ -30,7 +30,7 @@ import unittest
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5Type.tests.Sequence import Sequence
 from Products.ERP5.tests.testPackingList import TestPackingListMixin
-from Products.ERP5.tests.utils import newSimulationExpectedFailure
+from Products.ERP5Type.UnrestrictedMethod import UnrestrictedMethod
 
 class TestDivergenceTester(TestPackingListMixin, ERP5TypeTestCase):
   """
@@ -63,6 +63,7 @@ class TestDivergenceTester(TestPackingListMixin, ERP5TypeTestCase):
       portal_rules.deleteContent(rule_id_list)
       self.tic()
 
+  @UnrestrictedMethod
   def stepResetDeliveringRule(self, sequence):
     original_rule = rule = self.getDeliveringRule()
     self.assertEqual(rule.getId(), 'new_delivery_simulation_rule')
@@ -126,6 +127,7 @@ class TestDivergenceTester(TestPackingListMixin, ERP5TypeTestCase):
     self.assertNotEqual(prevision, decision)
     movement.setQuantity(decision)
 
+  @UnrestrictedMethod
   def _addDivergenceTester(self, sequence, tester_type, tester_name, **kw):
     """
     Add a divergence tester to the rule

@@ -2,7 +2,7 @@
 <ZopeData>
   <record id="1" aka="AAAAAAAAAAE=">
     <pickle>
-      <global name="ERP5Form" module="Products.ERP5Form.Form"/>
+      <global name="ERP5 Form" module="erp5.portal_type"/>
     </pickle>
     <pickle>
       <dictionary>
@@ -114,6 +114,7 @@
                         <string>my_authorization_forced</string>
                         <string>my_site_map_section_parent</string>
                         <string>my_site_map_document_parent</string>
+                        <string>my_caching_policy</string>
                       </list>
                     </value>
                 </item>

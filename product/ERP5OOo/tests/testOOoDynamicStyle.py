@@ -28,15 +28,12 @@
 ##############################################################################
 
 import os
-import sys
 import unittest
 from cStringIO import StringIO
 from zipfile import ZipFile
 from Products.ERP5Type.tests.utils import FileUpload
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
-from AccessControl.SecurityManagement import newSecurityManager
 from Products.ERP5Type.tests.utils import DummyLocalizer
-from zLOG import LOG
 from Products.ERP5OOo.tests.utils import Validator
 from Products.ERP5OOo.OOoUtils import OOoBuilder
 
@@ -219,7 +216,7 @@ return getattr(context, "%s_%s" % (parameter, current_language))
     filename = 'cmyk_sample.jpg'
     file_path = os.path.join(os.path.dirname(__file__), 'test_document',
         filename)
-    upload_file = FileUpload(file_path, filename)
+    upload_file = FileUpload(file_path)
     document = self.portal.portal_contributions.newContent(file=upload_file)
     addOOoTemplate = self.getPortal().manage_addProduct['ERP5OOo'].addOOoTemplate
     addOOoTemplate(id='Base_viewIncludeImageAsOdt', title='')

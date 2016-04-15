@@ -98,102 +98,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-/*global window, rJS, URI */\n
-/*jslint nomen: true, indent: 2, maxerr: 3 */\n
-(function (window, rJS, URI) {\n
-  "use strict";\n
-\n
-  var gadget_klass = rJS(window);\n
-  gadget_klass\n
-    /////////////////////////////////////////////////////////////////\n
-    // ready\n
-    /////////////////////////////////////////////////////////////////\n
-    // Init local properties\n
-    .ready(function (g) {\n
-      g.props = {};\n
-    })\n
-\n
-    // Assign the element to a variable\n
-    .ready(function (g) {\n
-      return g.getElement()\n
-        .push(function (element) {\n
-          g.props.element = element;\n
-        });\n
-    })\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // Acquired methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareAcquiredMethod("jio_get", "jio_get")\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // declared methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareMethod(\'triggerSubmit\', function () {\n
-      return this.getDeclaredGadget(\'fg\')\n
-        .push(function (g) {\n
-          return g.triggerSubmit();\n
-        });\n
-    })\n
-    .declareMethod("render", function (options) {\n
-      var gadget = this,\n
-        element = gadget.props.element,\n
-        erp5_document,\n
-        erp5_form,\n
-        form_gadget;\n
-\n
-      return gadget.jio_get({"_id": options.jio_key}, {"_view": options.view})\n
-        .push(function (result) {\n
-          var uri = new URI(result.data._embedded._view._links.form_definition.href);\n
-          erp5_document = result.data;\n
-          return gadget.jio_get({"_id": uri.segment(2)}, {"_view": "view"});\n
-        })\n
-        .push(function (result) {\n
-          erp5_form = result.data;\n
-\n
-          var url = "gadget_erp5_pt_" + erp5_form.pt;\n
-          // XXX Hardcoded specific behaviour for form_view\n
-          if ((options.editable !== undefined) && (erp5_form.pt === "form_view")) {\n
-            url += "_editable";\n
-          }\n
-          url += ".html";\n
-\n
-          return gadget.declareGadget(url, {\n
-            scope: "fg"\n
-          });\n
-        })\n
-        .push(function (result) {\n
-          var sub_options = options.fg || {};\n
-          sub_options.erp5_document = erp5_document;\n
-          sub_options.form_definition = erp5_form;\n
-          sub_options.view = options.view;\n
-          sub_options.action_view = options.action_view;\n
-          sub_options.jio_key = options.jio_key;\n
-          sub_options.editable = options.editable;\n
-\n
-          form_gadget = result;\n
-          return form_gadget.render(sub_options);\n
-        })\n
-        .push(function () {\n
-          return form_gadget.getElement();\n
-        })\n
-        .push(function (fragment) {\n
-          // Clear first to DOM, append after to reduce flickering/manip\n
-          while (element.firstChild) {\n
-            element.removeChild(element.firstChild);\n
-          }\n
-          element.appendChild(fragment);\n
-        });\n
-    });\n
-\n
-}(window, rJS, URI));
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Doc JS</string> </value>
         </item>
@@ -312,7 +216,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>sven</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -326,7 +230,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>938.19043.60684.21452</string> </value>
+                <value> <string>949.26608.26326.12817</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -344,8 +248,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1413473559.42</float>
-                        <string>GMT</string>
+                        <float>1456489995.58</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

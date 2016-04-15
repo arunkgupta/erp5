@@ -64,8 +64,7 @@ class ItemListSplitSolver(SolverMixin, ConfigurableMixin, XMLObject):
                             interfaces.IConfigurable,
                            )
 
-  # ISolver Implementation
-  def solve(self, activate_kw=None):
+  def _solve(self, activate_kw=None):
     """This method create new movement based on difference of aggregate sets.
     It supports only removed items.
     Quantity divergence is also solved with sum of aggregated quantities stored

@@ -27,10 +27,12 @@
 ##############################################################################
 
 import re
-import transaction
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5.Tool.TemplateTool import BusinessTemplateUnknownError
 from Products.ERP5Type.tests.Sequence import SequenceList
+from Products.ERP5.genbt5list import main as genbt5list
+from Products.ERP5 import ERP5Site
+import os
 
 DETAIL_PATTERN = re.compile(r"(?P<relative_url>.*)\ \<\>\ " + \
       r"(?P<reference>\w+)\ \-\>\ (?P<new_reference>\w+)")
@@ -65,6 +67,13 @@ class TestUpgrader(ERP5TypeTestCase):
         validation_state='validated', title="User"):
       if person.getValidationState() == "validated":
         person.invalidate()
+    # update the bt5list will be updated to the version of the filesystem
+    bootstrap_path = os.environ.get('erp5_tests_bootstrap_path') or \
+      ERP5Site.getBootstrapDirectory()
+    # the path list can contain several directories in projects
+    bt5_path_list = os.environ['erp5_tests_bt5_path'].split(',')
+    bt5_path_list.append(bootstrap_path)
+    genbt5list(dir_list=bt5_path_list)
     self.tic()
 
   def stepClearCache(self, sequence=None):
@@ -312,21 +321,16 @@ class TestUpgrader(ERP5TypeTestCase):
       self.portal.portal_templates.getInstalledBusinessTemplateTitleList())
 
   def stepCheckNoActivitiesCreated(self, sequence=None):
-    transaction.commit()
     portal_activities = self.getActivityTool()
-    message = portal_activities.getMessageList()[0]
+    message, = portal_activities.getMessageList()
     self.assertEqual(message.method_id, "Alarm_runUpgrader")
-    portal_templates = self.getTemplateTool()
-    title_list = portal_templates.getInstalledBusinessTemplateTitleList()
-    self.assertTrue('erp5_web' not in title_list,
-      "%s found in %s" % ('erp5_web', title_list))
+    getTitleList = self.getTemplateTool().getInstalledBusinessTemplateTitleList
+    self.assertNotIn('erp5_web', getTitleList())
     portal_activities.manageInvoke(message.object_path, message.method_id)
-    title_list = portal_templates.getInstalledBusinessTemplateTitleList()
-    self.assertTrue('erp5_web' in title_list,
-      "%s not found in %s" % ('erp5_web', title_list))
-    transaction.commit()
-    message_list = set([i.method_id for i in portal_activities.getMessageList()])
-    self.assertTrue('callMethodOnObjectList' not in message_list)
+    self.assertIn('erp5_web', getTitleList())
+    self.commit()
+    self.assertEqual({'immediateReindexObject', 'unindexObject'},
+      {x.method_id for x in portal_activities.getMessageList()})
 
   def stepCreateBigIncosistentData(self, sequence=None):
     for _ in range(101):
@@ -341,18 +345,13 @@ class TestUpgrader(ERP5TypeTestCase):
         title="org_%s" % self.portal.organisation_module.getLastId())
 
   def stepCheckActivitiesCreated(self, sequence=None):
-    transaction.commit()
     portal_activities = self.getActivityTool()
-    message = portal_activities.getMessageList()[0]
+    message, = portal_activities.getMessageList()
     self.assertEqual(message.method_id, "Alarm_runUpgrader")
     portal_activities.manageInvoke(message.object_path, message.method_id)
-    transaction.commit()
-    message_list = portal_activities.getMessageList()
-    method_id_list = set([i.method_id for i in message_list])
-    self.assertTrue('callMethodOnObjectList' in method_id_list)
-    for message in message_list:
-      if message.method_id == 'callMethodOnObjectList':
-        self.assertEqual(message.args[-1], 'Base_postCheckConsistencyResult')
+    self.commit()
+    self.assertIn('Base_postCheckConsistencyResult',
+      {x.method_id for x in portal_activities.getMessageList()})
 
   def stepUninstallERP5UpgraderTestBT(self, sequence=None):
     bt5 = self.portal.portal_templates.getInstalledBusinessTemplate('erp5_web')
@@ -371,8 +370,8 @@ class TestUpgrader(ERP5TypeTestCase):
   def stepCheckSummaryForPreUpgradeRequired(self, sequence=None):
     alarm = self.portal.portal_alarms.upgrader_check_upgrader
     active_process = alarm.getLastActiveProcess()
-    detail = active_process.getResultList()[0].detail
-    self.assertTrue("Is required solve Pre Upgrade first" in detail)
+    detail_list = active_process.getResultList()[0].detail
+    self.assertTrue("Is required solve Pre Upgrade first. You need run active sense once at least on this alarm" in detail_list)
 
   def stepCheckPersonNotInConstraintTypeListPerPortalType(self, sequence=None):
     constraint_type_per_type, _ = \
@@ -434,6 +433,58 @@ class TestUpgrader(ERP5TypeTestCase):
     except BusinessTemplateUnknownError:
       self.fail("checkConsistency should not raise exception."
         "It means that one Business Template was not found in repositories")
+
+  def stepCreateOrganisationWithActivity(self, sequence=None):
+    new_organisation = self.portal.organisation_module.newContent(
+      portal_type="Organisation",
+      title="Active Organisation",
+      activity="education")
+    self.tic()
+    self.assertEqual(new_organisation.getCategoriesList(),
+                     ['activity/education'])
+    sequence.set('organisation', new_organisation)
+
+  def stepCreateCustomUpgradeCategoryList(self, sequence=None):
+    portal = self.portal
+    skin_folder = portal.portal_skins.custom
+    script_id = "Base_getUpgradeCategoryNameList"
+    skin_folder.manage_addProduct['PythonScripts'].manage_addPythonScript(script_id)
+    custom_script = getattr(skin_folder, script_id)
+    script_body = "return (('activity', 'business_core'),)"
+    custom_script.ZPythonScript_edit('', script_body)
+
+  def stepRemoveCustomUpgradeCategoryList(self, sequence=None):
+    custom_folder = self.portal.portal_skins.custom
+    custom_folder.manage_delObjects("Base_getUpgradeCategoryNameList")
+
+  def stepRenameCategoryActivityToBusinessCore(self, sequence=None):
+    """Renames the category 'activity' to 'business_core'"""
+    self.portal.portal_categories.activity.edit(
+      id="business_core",
+      title="Business Core")
+
+  def stepUpdateOrganisationPropertySheetManually(self, sequence=None):
+    """
+    Changes the category property Activity of an Organisation to Business Core.
+    This step is made manually in the step, but in a real case the old property
+    sheet would be replaced by a new one saved in a business template to upgrade
+    """
+    activity = self.portal.portal_property_sheets.Organisation.activity_category
+    activity.edit(id="business_core_category",
+                  title= "business_core",
+		  reference="business_core")
+
+  def stepCheckOrganisationObjectUpdated(self, sequence=None):
+    self.assertEqual(sequence.get('organisation').getCategoriesList(),
+                     ['business_core/education'])
+
+  def stepCheckPostUpgradeCategoryName(self, sequence=None):
+    alarm = getattr(self.portal.portal_alarms, 'upgrader_check_post_upgrade')
+    active_process = alarm.getLastActiveProcess()
+    detail_list = active_process.getResultList()[0].detail
+    message = 'Portal Type Organisation still contains the category activity'
+    self.assertTrue(message in detail_list, detail_list)
+    self.assertTrue(detail_list.count(message), 1)
 
   def test_workflow_chain_constraint(self):
     """ Check if Workflow chains is broken, it can be detected and fixed after
@@ -631,6 +682,28 @@ class TestUpgrader(ERP5TypeTestCase):
       stepRunFullUpgrader
       stepTic
       stepCheckERP5WebBTInstalled
+    """
+    sequence_list.addSequenceString(sequence_string)
+    sequence_list.play(self)
+
+  def test_rename_category(self):
+    """Check that the renaming category feature correctly updates objects"""
+    sequence_list = SequenceList()
+    sequence_string = """
+      stepCreateOrganisationWithActivity
+      stepCreateCustomUpgradeCategoryList
+      stepRenameCategoryActivityToBusinessCore
+      stepUpdateOrganisationPropertySheetManually
+      stepTic
+      stepActiveSensePreUpgradeAlarm
+      stepActiveSensePostUpgradeAlarm
+      stepTic
+      stepRunUpgrader
+      stepTic
+      stepRunPostUpgrade
+      stepTic
+      stepCheckOrganisationObjectUpdated
+      stepRemoveCustomUpgradeCategoryList
     """
     sequence_list.addSequenceString(sequence_string)
     sequence_list.play(self)

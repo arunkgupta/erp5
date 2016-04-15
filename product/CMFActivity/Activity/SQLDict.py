@@ -26,21 +26,19 @@
 #
 ##############################################################################
 
-from Products.CMFActivity.ActivityTool import Message, registerActivity
+from Products.CMFActivity.ActivityTool import Message
 import sys
 #from time import time
 from SQLBase import SQLBase, sort_message_key
 
 import transaction
 
-from zLOG import LOG, TRACE, WARNING, ERROR, INFO, PANIC
+from zLOG import TRACE, WARNING
 
 # Stop validating more messages when this limit is reached
 MAX_VALIDATED_LIMIT = 1000
 # Read up to this number of messages to validate.
 READ_MESSAGE_LIMIT = 1000
-
-MAX_MESSAGE_LIST_SIZE = 100
 
 class SQLDict(SQLBase):
   """
@@ -49,48 +47,7 @@ class SQLDict(SQLBase):
     because use of OOBTree.
   """
   sql_table = 'message'
-
-  # Transaction commit methods
-  def prepareQueueMessageList(self, activity_tool, message_list):
-    registered_message_list = [m for m in message_list if m.is_registered]
-    for i in xrange(0, len(registered_message_list), MAX_MESSAGE_LIST_SIZE):
-      message_list = registered_message_list[i:i + MAX_MESSAGE_LIST_SIZE]
-      path_list = ['/'.join(m.object_path) for m in message_list]
-      active_process_uid_list = [m.active_process_uid for m in message_list]
-      method_id_list = [m.method_id for m in message_list]
-      priority_list = [m.activity_kw.get('priority', 1) for m in message_list]
-      date_list = [m.activity_kw.get('at_date') for m in message_list]
-      group_method_id_list = [m.getGroupId() for m in message_list]
-      tag_list = [m.activity_kw.get('tag', '') for m in message_list]
-      serialization_tag_list = [m.activity_kw.get('serialization_tag', '')
-                                for m in message_list]
-      order_validation_text_list = []
-      processing_node_list = []
-      for m in message_list:
-        m.order_validation_text = x = self.getOrderValidationText(m)
-        # BBB: 'order_validation_text' SQL column is now useless.
-        #      If we remove it, 'message' & 'message_queue'  can have the same
-        #      schema, and much code can be merged into SQLBase.
-        order_validation_text_list.append(x)
-        processing_node_list.append(0 if x == 'none' else -1)
-      dumped_message_list = map(Message.dump, message_list)
-      # The uid_list also is store in the ZODB
-      uid_list = activity_tool.getPortalObject().portal_ids.generateNewIdList(
-        id_generator='uid', id_group='portal_activity',
-        id_count=len(message_list))
-      activity_tool.SQLDict_writeMessageList(
-        uid_list=uid_list,
-        path_list=path_list,
-        active_process_uid_list=active_process_uid_list,
-        method_id_list=method_id_list,
-        priority_list=priority_list,
-        message_list=dumped_message_list,
-        date_list=date_list,
-        group_method_id_list=group_method_id_list,
-        tag_list=tag_list,
-        serialization_tag_list=serialization_tag_list,
-        processing_node_list=processing_node_list,
-        order_validation_text_list=order_validation_text_list)
+  uid_group = 'portal_activity'
 
   def generateMessageUID(self, m):
     return (tuple(m.object_path), m.method_id, m.activity_kw.get('tag'), m.activity_kw.get('group_id'))
@@ -191,29 +148,6 @@ class SQLDict(SQLBase):
       return None, original_uid, [uid]
     return load
 
-  def hasActivity(self, activity_tool, object, method_id=None, only_valid=None, active_process_uid=None):
-    hasMessage = getattr(activity_tool, 'SQLDict_hasMessage', None)
-    if hasMessage is not None:
-      if object is None:
-        my_object_path = None
-      else:
-        my_object_path = '/'.join(object.getPhysicalPath())
-      result = hasMessage(path=my_object_path, method_id=method_id, only_valid=only_valid, active_process_uid=active_process_uid)
-      if len(result) > 0:
-        return result[0].message_count > 0
-    return 0
-
-  def dumpMessageList(self, activity_tool):
-    # Dump all messages in the table.
-    message_list = []
-    dumpMessageList = getattr(activity_tool, 'SQLDict_dumpMessageList', None)
-    if dumpMessageList is not None:
-      result = dumpMessageList()
-      for line in result:
-        m = Message.load(line.message, uid=line.uid, line=line)
-        message_list.append(m)
-    return message_list
-
   def distribute(self, activity_tool, node_count):
     offset = 0
     assignMessage = getattr(activity_tool, 'SQLBase_assignMessage', None)
@@ -233,7 +167,7 @@ class SQLDict(SQLBase):
         for line in result:
           message = Message.load(line.message, uid=line.uid, line=line)
           if not hasattr(message, 'order_validation_text'): # BBB
-            message.order_validation_text = line.order_validation_text
+            message.order_validation_text = self.getOrderValidationText(message)
           self.getExecutableMessageList(activity_tool, message, message_dict,
                                         validation_text_dict, now_date=now_date)
 
@@ -288,73 +222,3 @@ class SQLDict(SQLBase):
             if validated_count >= MAX_VALIDATED_LIMIT:
               return
         offset += READ_MESSAGE_LIMIT
-
-  # Validation private methods
-  def _validate(self, activity_tool, method_id=None, message_uid=None, path=None, tag=None,
-                serialization_tag=None):
-    if isinstance(method_id, str):
-      method_id = [method_id]
-    if isinstance(path, str):
-      path = [path]
-    if isinstance(tag, str):
-      tag = [tag]
-
-    if method_id or message_uid or path or tag or serialization_tag:
-      validateMessageList = activity_tool.SQLDict_validateMessageList
-      result = validateMessageList(method_id=method_id,
-                                   message_uid=message_uid,
-                                   path=path,
-                                   tag=tag,
-                                   count=False,
-                                   serialization_tag=serialization_tag)
-      message_list = []
-      for line in result:
-        m = Message.load(line.message,
-                             line=line,
-                             uid=line.uid,
-                             date=line.date,
-                             processing_node=line.processing_node)
-        if not hasattr(m, 'order_validation_text'): # BBB
-          m.order_validation_text = line.order_validation_text
-        message_list.append(m)
-      return message_list
-    else:
-      return []
-
-  def countMessage(self, activity_tool, tag=None, path=None,
-                   method_id=None, message_uid=None, **kw):
-    """Return the number of messages which match the given parameters.
-    """
-    if isinstance(tag, str):
-      tag = [tag]
-    if isinstance(path, str):
-      path = [path]
-    if isinstance(method_id, str):
-      method_id = [method_id]
-    result = activity_tool.SQLDict_validateMessageList(method_id=method_id,
-                                                       path=path,
-                                                       message_uid=message_uid,
-                                                       tag=tag,
-                                                       serialization_tag=None,
-                                                       count=1)
-    return result[0].uid_count
-
-  def countMessageWithTag(self, activity_tool, value):
-    """Return the number of messages which match the given tag.
-    """
-    return self.countMessage(activity_tool, tag=value)
-
-  # Required for tests (time shift)
-  def timeShift(self, activity_tool, delay, processing_node=None, retry=None):
-    """
-      To simulate timeShift, we simply substract delay from
-      all dates in SQLDict message table
-    """
-    activity_tool.SQLDict_timeShift(delay=delay, processing_node=processing_node,retry=retry)
-
-  def getPriority(self, activity_tool):
-    method = activity_tool.SQLDict_getPriority
-    default =  SQLBase.getPriority(self, activity_tool)
-    return self._getPriority(activity_tool, method, default)
-
-registerActivity(SQLDict)

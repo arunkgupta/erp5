@@ -126,18 +126,26 @@ class SimulationTool(BaseTool):
             ['Manager',])
       BaseTool.inheritedAttribute('manage_afterAdd')(self, item, container)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'solveDelivery')
     def solveDelivery(self, delivery, delivery_solver_name, target_solver_name,
                       additional_parameters=None, **kw):
       """
+        XXX obsoleted API
+
         Solves a delivery by calling first DeliverySolver, then TargetSolver
       """
       return self._solveMovementOrDelivery(delivery, delivery_solver_name,
           target_solver_name, delivery=1,
           additional_parameters=additional_parameters, **kw)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'solveMovement')
     def solveMovement(self, movement, delivery_solver_name, target_solver_name,
                       additional_parameters=None, **kw):
       """
+        XXX obsoleted API
+
         Solves a movement by calling first DeliverySolver, then TargetSolver
       """
       return self._solveMovementOrDelivery(movement, delivery_solver_name,
@@ -481,7 +489,7 @@ class SimulationTool(BaseTool):
         new_kw = new_kw.copy()
 
         # Group-by expression  (eg. group_by=['node_uid'])
-        group_by = new_kw.pop('group_by', [])
+        group_by = new_kw.pop('group_by_list', [])
 
         # group by from stock table (eg. group_by_node=True)
         # prepend table name to avoid ambiguities.
@@ -496,14 +504,14 @@ class SimulationTool(BaseTool):
 
         # group by involving a related key (eg. group_by=['product_line_uid'])
         related_key_dict_passthrough_group_by = new_kw.get(
-                'related_key_dict_passthrough', {}).pop('group_by', [])
+                'related_key_dict_passthrough', {}).pop('group_by_list', [])
         if isinstance(related_key_dict_passthrough_group_by, basestring):
           related_key_dict_passthrough_group_by = (
                 related_key_dict_passthrough_group_by,)
         group_by.extend(related_key_dict_passthrough_group_by)
 
         if group_by:
-          new_kw['group_by'] = group_by
+          new_kw['group_by_list'] = group_by
 
         # select expression
         select_dict = new_kw.setdefault('select_dict', {})
@@ -810,7 +818,7 @@ class SimulationTool(BaseTool):
           else:
             related_group_by.append(value)
         if len(related_group_by):
-          new_kw['related_key_dict_passthrough']['group_by'] = related_group_by
+          new_kw['related_key_dict_passthrough']['group_by_list'] = related_group_by
 
       #variation_category_uid_list = self._generatePropertyUidList(variation_category)
       #if len(variation_category_uid_list) :
@@ -1396,6 +1404,8 @@ class SimulationTool(BaseTool):
             result = delta_result
       return result
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getInventoryCacheLag')
     def getInventoryCacheLag(self):
       """
       Returns a duration, in days, for stock cache management.
@@ -1536,14 +1546,14 @@ class SimulationTool(BaseTool):
           group_by_id_list_append(group_by_id)
       # Add related key group by
       if 'select_list' in new_kw.get("related_key_dict_passthrough", []):
-        for group_by_id in new_kw["related_key_dict_passthrough"]['group_by']:
+        for group_by_id in new_kw["related_key_dict_passthrough"]['group_by_list']:
           if group_by_id in new_kw["related_key_dict_passthrough"]["select_list"]:
             group_by_id_list_append(group_by_id)
           else:
             # XXX-Aurel : to review & change, must prevent coming here before
             raise ValueError, "Impossible to group by %s" %(group_by_id)
       elif "group_by" in new_kw.get("related_key_dict_passthrough", []):
-        raise ValueError, "Impossible to group by %s" %(new_kw["related_key_dict_passthrough"]['group_by'],)
+        raise ValueError, "Impossible to group by %s" %(new_kw["related_key_dict_passthrough"]['group_by_list'],)
 
       if len(group_by_id_list):
         def getInventoryListKey(line):
@@ -1705,7 +1715,7 @@ class SimulationTool(BaseTool):
       # clause. Note that the call to 'mergeZRDBResults' will crash if the GROUP
       # clause contains a column not requested in the SELECT clause.
       kw.update(self._getDefaultGroupByParameters(**kw), ignore_group_by=1)
-      group_by_list = self._generateKeywordDict(**kw)[1].get('group_by', ())
+      group_by_list = self._generateKeywordDict(**kw)[1].get('group_by_list', ())
 
       results = []
       edit_result = {}
@@ -2015,6 +2025,15 @@ class SimulationTool(BaseTool):
       """
       kw['movement_list_mode'] = 1
       kw.update(self._getDefaultGroupByParameters(**kw))
+
+      # Extend select_dict by order_by_list columns.
+      catalog = self.getPortalObject().portal_catalog.getSQLCatalog()
+      kw = catalog.getCannonicalArgumentDict(kw)
+      extra_column_set = {i[0] for i in kw.get('order_by_list', ())}
+      kw.setdefault('select_dict', {}).update(
+        (x.replace('.', '_') + '__ext__', x)
+        for x in extra_column_set if not x.endswith('__score__'))
+
       sql_kw = self._generateSQLKeywordDict(**kw)
 
       return self.Resource_zGetMovementHistoryList(
@@ -2035,46 +2054,60 @@ class SimulationTool(BaseTool):
 
     security.declareProtected(Permissions.AccessContentsInformation,
                               'getMovementHistoryStat')
-    def getMovementHistoryStat(self, src__=0, ignore_variation=0,
-                               standardise=0, omit_simulation=0,
-                               only_accountable=True, omit_input=0,
-                               omit_output=0, selection_domain=None,
-                               selection_report=None, precision=None, **kw):
+    def getMovementHistoryStat(self, src__=0, **kw):
       """
       getMovementHistoryStat is the pending to getMovementHistoryList
       for ListBox stat
+
+      supported parameters are similar to ones accepted by getInventoryList
+      with the exception of group_by_*
       """
       sql_kw = self._generateSQLKeywordDict(**kw)
-      return self.Resource_zGetInventory(src__=src__,
-          ignore_variation=ignore_variation, standardise=standardise,
-          omit_simulation=omit_simulation, only_accountable=only_accountable,
-          omit_input=omit_input, omit_output=omit_output,
-          selection_domain=selection_domain, selection_report=selection_report,
-          precision=precision, **sql_kw)
+      inventory_list = self.getInventoryList(ignore_group_by=1, **kw)
+      assert len(inventory_list) == 1
+      return inventory_list[0]
+
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getNextAlertInventoryDate')
+    def getNextAlertInventoryDate(self, reference_quantity=0, src__=0,
+                       simulation_period='Future',from_date=None, **kw):
+      """
+      Give the next date where the quantity is lower than the
+      reference quantity.
+      """
+      result = None
+      # First look at current inventory, we might have already an inventory
+      # lower than reference_quantity
+      if from_date is None:
+        from_date = DateTime()
+      inventory_method = getattr(self, "get%sInventory" % simulation_period)
+      current_inventory = inventory_method(at_date=from_date, **kw)
+      if current_inventory < reference_quantity:
+        result = from_date
+      else:
+        inventory_list_method = getattr(self,
+          "get%sInventoryList" % simulation_period)
+        inventory_list = inventory_list_method(src__=src__, from_date=from_date,
+            sort_on = (('date', 'ascending'),), group_by_movement=1, **kw)
+        if src__ :
+          return inventory_list
+        total_inventory = 0.
+        for inventory in inventory_list:
+          if inventory['inventory'] is not None:
+            total_inventory += inventory['inventory']
+            if total_inventory < reference_quantity:
+              result = inventory['date']
+              break
+      return result
 
     security.declareProtected(Permissions.AccessContentsInformation,
                               'getNextNegativeInventoryDate')
-    def getNextNegativeInventoryDate(self, src__=0, **kw):
+    def getNextNegativeInventoryDate(self, **kw):
       """
-      Returns statistics of inventory grouped by section or site
+      Deficient Inventory with a reference_quantity of 0, so when the
+      stock will be negative
       """
-      #sql_kw = self._generateSQLKeywordDict(order_by_expression='stock.date', **kw)
-      #sql_kw['group_by_expression'] = 'stock.uid'
-      #sql_kw['order_by_expression'] = 'stock.date'
-
-      result = self.getInventoryList(src__=src__,
-          sort_on = (('date', 'ascending'),), group_by_movement=1, **kw)
-      if src__ :
-        return result
-
-      total_inventory = 0.
-      for inventory in result:
-        if inventory['inventory'] is not None:
-          total_inventory += inventory['inventory']
-          if total_inventory < 0:
-            return inventory['date']
-
-      return None
+      return self.getNextAlertInventoryDate(reference_quantity=0, **kw)
 
     #######################################################
     # Traceability management

@@ -42,12 +42,24 @@ from Products.ERP5.Tool.TemplateTool import BusinessTemplateUnknownError
 
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 
+# Specify svn.erp5.org certificate file.
+import ssl
+if hasattr(ssl, '_create_default_https_context'):
+  # On python >= 2.7.9 we patch ssl module to accept our svn.erp5.org certificate
+  _create_default_https_context_orig = ssl._create_default_https_context
+  def _create_default_https_context(purpose=ssl.Purpose.SERVER_AUTH, cafile=None,
+                             capath=None, cadata=None):
+    return _create_default_https_context_orig(
+      purpose,
+      cafile=os.path.join(os.path.dirname(__file__), 'svn.erp5.org.cert'),
+      capath=capath,
+      cadata=cadata,
+    )
+  ssl._create_default_https_context = _create_default_https_context
+
 class TestTemplateTool(ERP5TypeTestCase):
+  """Test the template tool
   """
-  Test the template tool
-  """
-  run_all_test = 1
-  quiet = 1
   test_tool_id = 'test_portal_templates'
 
   def getBusinessTemplateList(self):
@@ -96,7 +108,7 @@ class TestTemplateTool(ERP5TypeTestCase):
                       if m.method_id == 'Folder_reindexAll']
     self.assertEqual(len(message_list), 0)
 
-  def testUpdateBT5FromRepository(self, quiet=quiet, run=run_all_test):
+  def testUpdateBT5FromRepository(self):
     """ Test the list of bt5 returned for upgrade """
     # edit bt5 revision so that it will be marked as updatable
     erp5_base = self.templates_tool.getInstalledBusinessTemplate('erp5_base',
@@ -121,15 +133,25 @@ class TestTemplateTool(ERP5TypeTestCase):
     """
       Function used to trust in svn.erp5.org.
     """
-    trust_dict = dict(realm="https://svn.erp5.org:443",
-      hostname="roundcube.nexedi.com",
-      issuer_dname="Nexedi SA, Marcq en Baroeul, Nord Pas de Calais, FR",
-      valid_from="Thu, 22 May 2008 13:43:01 GMT",
-      valid_until="Sun, 20 May 2018 13:43:01 GMT",
-      finger_print=\
-        "a1:f7:c6:bb:51:69:84:28:ac:58:af:9d:05:73:de:24:45:4d:a1:bb",
-      failures=8)
-    getVcsTool("svn").__of__(self.portal).acceptSSLServer(trust_dict)
+    for trust_dict in [
+      # for subversion 1.6
+      {'failures': 8,
+        'finger_print': 'a1:f7:c6:bb:51:69:84:28:ac:58:af:9d:05:73:de:24:45:4d:a1:bb',
+        'hostname': 'roundcube.nexedi.com',
+        'issuer_dname': 'Nexedi SA, Marcq en Baroeul, Nord Pas de Calais, FR',
+        'realm': 'https://svn.erp5.org:443',
+        'valid_from': 'Thu, 22 May 2008 13:43:01 GMT',
+        'valid_until': 'Sun, 20 May 2018 13:43:01 GMT'},
+      # for subversion 1.8
+      {'failures': 8,
+        'finger_print': 'A1:F7:C6:BB:51:69:84:28:AC:58:AF:9D:05:73:DE:24:45:4D:A1:BB',
+        'hostname': 'mail.nexedi.com',
+        'issuer_dname': 'Nexedi SA, Marcq en Baroeul, Nord Pas de Calais, FR(webmaster@nexedi.com)',
+        'realm': 'https://svn.erp5.org:443',
+        'valid_from': 'May 22 13:43:01 2008 GMT',
+        'valid_until': 'May 20 13:43:01 2018 GMT'}
+      ]:
+      getVcsTool("svn").__of__(self.portal).acceptSSLServer(trust_dict)
 
   def test_download_svn(self):
     # if the page looks like a svn repository, template tool will use pysvn to
@@ -259,12 +281,79 @@ class TestTemplateTool(ERP5TypeTestCase):
     self.assertFalse(compareVersionStrings('1.0rc1', '>= 1.0'))
     self.assertTrue(compareVersionStrings('1.0rc1', '>= 1.0rc1'))
 
-  def test_getInstalledBusinessTemplate(self):
-    self.assertNotEquals(None, self.getPortal()\
-        .portal_templates.getInstalledBusinessTemplate('erp5_core'))
 
-    self.assertEqual(None, self.getPortal()\
-        .portal_templates.getInstalledBusinessTemplate('erp5_toto'))
+  def test_getInstalledBusinessTemplate_installed(self):
+    test_bt = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='erp5_test_bt_%s' % self.id())
+    test_bt.install()
+    self.tic()
+    self.assertEqual(test_bt,
+      self.portal.portal_templates.getInstalledBusinessTemplate('erp5_test_bt_%s' % self.id()))
+
+  def test_getInstalledBusinessTemplate_erp5_core_installed(self):
+    erp5_core = self.portal.portal_templates.getInstalledBusinessTemplate('erp5_core')
+    self.assertNotEqual(None, erp5_core)
+    self.assertEqual('Business Template', erp5_core.getPortalType())
+
+  def test_getInstalledBusinessTemplate_not_installed(self):
+    self.assertEquals(None,
+     self.portal.portal_templates.getInstalledBusinessTemplate('not_installed'))
+
+  def test_getInstalledBusinessTemplate_provision(self):
+    test_bt = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id(),
+      provision_list=['erp5_test_bt_%s' % self.id()])
+    test_bt.install()
+    self.tic()
+    self.assertEqual(test_bt,
+      self.portal.portal_templates.getInstalledBusinessTemplate('erp5_test_bt_%s' % self.id()))
+
+  def test_getInstalledBusinessTemplate_replaced(self):
+    test_bt_v1 = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id(),
+      version='1')
+    test_bt_v1.install()
+    self.tic()
+    test_bt_v2 = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id(),
+      version='2')
+    test_bt_v2.install()
+    self.assertEqual('replaced', test_bt_v1.getInstallationState())
+    self.tic()
+    self.assertEqual(test_bt_v2,
+      self.portal.portal_templates.getInstalledBusinessTemplate('test_bt_%s' % self.id()))
+
+  def test_getInstalledBusinessTemplate_uninstalled(self):
+    test_bt = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id())
+    test_bt.install()
+    test_bt.uninstall()
+    self.tic()
+    self.assertEqual(None,
+      self.portal.portal_templates.getInstalledBusinessTemplate('test_bt_%s' % self.id()))
+
+  def test_getInstalledBusinessTemplate_replaced_then_uninstalled(self):
+    test_bt_v1 = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id(),
+      version='1')
+    test_bt_v1.install()
+    self.tic()
+    test_bt_v2 = self.portal.portal_templates.newContent(
+      portal_type='Business Template',
+      title='test_bt_%s' % self.id(),
+      version='2')
+    test_bt_v2.install()
+    self.assertEqual('replaced', test_bt_v1.getInstallationState())
+    self.tic()
+    test_bt_v2.uninstall()
+    self.assertEqual(None,
+      self.portal.portal_templates.getInstalledBusinessTemplate('test_bt_%s' % self.id()))
 
   def test_revision(self):
     template_tool = self.portal.portal_templates
@@ -273,7 +362,7 @@ class TestTemplateTool(ERP5TypeTestCase):
     available_bt, = template_tool.getRepositoryBusinessTemplateList(
       template_list=('test_core',))
     revision = available_bt.getRevision()
-    self.assertEqual('PN8VPt52MbdHtxfjKvL+MBsNbzM=', revision)
+    self.assertEqual('ZjtyN3qfJKXd8TjB7JPX/mG0FkE=', revision)
     installed_bt = template_tool.download("%s/%s" % (available_bt.repository,
                                                      available_bt.filename))
     self.assertEqual(revision, installed_bt.getRevision())
@@ -296,14 +385,14 @@ class TestTemplateTool(ERP5TypeTestCase):
     # ... at building by default ...
     bt.build()
     revision = bt.getRevision()
-    self.assertEqual('tPNr/gGXaa0fYCsFUWe8nqzSNLc=', revision)
+    self.assertEqual('9rVhiz7Agr5G7L1jegm9yLuUD9U=', revision)
     self.portal.portal_skins.erp5_test.manage_renameObject('test_file',
                                                            'test_file2')
     bt.build(update_revision=False)
     self.assertEqual(revision, bt.getRevision())
     # ... and at export.
     bt.export(str(random.random()))
-    self.assertEqual('Nup/xsO1xpsmdJ5GTdknuVJyOr8=', bt.getRevision())
+    self.assertEqual('dhgvzCfmibJEiy5M+5axf9ZM3gA=', bt.getRevision())
     self.abort()
 
   def test_getInstalledBusinessTemplateList(self):
@@ -639,22 +728,24 @@ class TestTemplateTool(ERP5TypeTestCase):
 
     ordered_list = template_tool.sortBusinessTemplateList(new_bt5_list)
     # group orders
-    first_group = range(0, 6)
-    second_group =  range(6, 8)
-    third_group = range(8, 10)
-    fourth_group = range(10, 12)
-    fifth_group = range(12, 13)
+    first_group = range(0, 5)
+    second_group =  range(5, 11)
+    third_group = range(11, 12)
+    fourth_group = range(12, 14)
+    fifth_group = range(14, 15)
 
     expected_position_dict = {
       'erp5_property_sheets': first_group,
       'erp5_core_proxy_field_legacy': first_group,
       'erp5_mysql_innodb_catalog': first_group,
       'erp5_core': first_group,
-      'erp5_full_text_mroonga_catalog': first_group,
       'erp5_xhtml_style': first_group,
+      'erp5_jquery': second_group,
+      'erp5_jquery_ui': second_group,
+      'erp5_full_text_mroonga_catalog': second_group,
       'erp5_ingestion_mysql_innodb_catalog': second_group,
       'erp5_base': second_group,
-      'erp5_jquery': third_group,
+      'erp5_knowledge_pad': second_group,
       'erp5_ingestion': third_group,
       'erp5_web': fourth_group,
       'erp5_crm': fourth_group,

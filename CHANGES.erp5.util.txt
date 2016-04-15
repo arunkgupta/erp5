@@ -1,6 +1,29 @@
 Changes
 =======
 
+0.4.44 (2016-03-22)
+-------------------
+
+ * erp5.util.testnode:
+
+   - Cancel test result if testnodes are unable to create partitions and unable
+     to find runTestSuite command.
+   - Set specific environment variable to build NumPy/friends & Ruby gems in
+     parallel.
+   - For local repositories, ignore revision defined in software release.
+   - Make it possible to define slapos parameters in test suites.
+
+0.4.43 (2015-09-02)
+-------------------
+
+ * erp5.util
+
+   - Make services much more reactive when server is back [Sebastien Robin] 
+
+ * erp5.util.testnode 
+   - Simple log viewer app not to download the whole suite.log [Jérôme Perrin]
+   - Make code more robust when checkout git files [Sebastien Robin]
+
 0.4.42 (2014-12-02)
 -------------------
 

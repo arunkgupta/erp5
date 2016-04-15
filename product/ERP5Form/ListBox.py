@@ -1837,10 +1837,7 @@ class ListBoxRenderer:
 
           stat_result = {}
           for index, (k, v) in enumerate(self.getSelectedColumnList()):
-            try:
-              stat_result[k] = stat_brain[0][k]
-            except IndexError:
-              stat_result[k] = ''
+            stat_result[k] = stat_brain[0].get(k, '')
 
           stat_context = report_tree_obj.asContext(**stat_result)
           # XXX yo thinks that this code below is useless, so disabled.
@@ -2372,19 +2369,6 @@ class ListBoxHTMLRendererLine(ListBoxRendererLine):
     # Generate page selection methods based on the Listbox id
     createFolderMixInPageSelectionMethod(field_id)
 
-    # Check is there is a validation error at the level of the listbox
-    # as a whole. This will be required later to decide wherer to
-    # display values from (ie. from the REQUEST or from the object)
-    has_error = 0
-    for key in error_dict.keys():
-      for editable_id in editable_column_id_set:
-        candidate_field_key = "%s_%s" % (field_id, editable_id)
-        if key.startswith(candidate_field_key):
-          has_error = 1
-          break
-      if has_error:
-        break
-
     for (original_value, processed_value), (sql, title), alias \
       in zip(self.getValueList(), renderer.getSelectedColumnList(), renderer.getColumnAliasList()):
       # By default, no error.
@@ -2461,24 +2445,35 @@ class ListBoxHTMLRendererLine(ListBoxRendererLine):
             pass
 
       if editable_field is not None:
-        # XXX what if the object does not have uid?
-        key = '%s_%s' % (editable_field.getId(), self.getUid())
+        uid = self.getUid()
+        key = '%s_%s' % (editable_field.getId(), uid)
         if sql in editable_column_id_set:
           listbox_defines_column_as_editable = True
-          if has_error: # If there is any error on listbox, we should use what the user has typed
-            display_value = None
+          if uid is None:
+            display_value = original_value
           else:
-            validated_value_dict = request.get(field_id, None)
-            if validated_value_dict is None:
-              # If this is neither an error nor a validated listbox
-              # we should use the original value
-              display_value = original_value
-            else:
-              # If the listbox has been validated (ie. as it is the
-              # case whenever a relation field displays a popup menu)
-              # we have to use the value entered by the user
-              display_value = None #
-          if error_dict.has_key(key): # If error on current field, we should display message
+            # Like any other field in ERP5, always use the value entered by the
+            # user if any. However, it's only possible if keys are unique,
+            # so this is skipped if there's no uid.
+            # This duplicates some work done by field.render
+            field_key = editable_field.generate_field_key(key=key)
+            try:
+              display_value = editable_field._get_user_input_value(
+                field_key, request)
+            except (KeyError, AttributeError):
+              if request.get('default_' + field_key) is None:
+                display_value = original_value
+              else:
+                display_value = None
+            if isinstance(editable_field.getRecursiveTemplateField().widget,
+                          Widget.MultiItemsWidget) and \
+                not isinstance(display_value, list):
+              if display_value:
+                display_value = [display_value]
+              else:
+                display_value = []
+          # If error on current field, we should display message
+          if key in error_dict:
             error_text = error_dict[key].error_text
             error_text = cgi.escape(error_text)
             if isinstance(error_text, str):
@@ -2755,19 +2750,23 @@ class ListBoxValidator(Validator.Validator):
     required_not_found = 'Input is required but no input given.'
 
     def validate(self, field, key, REQUEST):
+        renderer = ListBoxRenderer(field=field, REQUEST=REQUEST)
         form = field.aq_parent
         # We need to know where we get the getter from
         # This is coppied from ERP5 Form
         here = getattr(form, 'aq_parent', REQUEST)
         columns = field.get_value('columns')
-        editable_columns = field.get_value('editable_columns')
         column_ids = [x[0] for x in columns]
+        editable_columns = field.get_value('editable_columns')
         editable_column_ids = [x[0] for x in editable_columns]
+        # Only consider editable columns that the user has selected
+        selected_column_ids = [x[0] for x in renderer.getSelectedColumnList()]
+        editable_column_ids = [x for x in editable_column_ids if x in selected_column_ids]
+
         editable_field_dict = {}
         for sql in editable_column_ids:
           alias = sql.replace('.', '_')
-          editable_field_dict[alias] = ListBoxRenderer(
-                                          field=field).getEditableField(alias)
+          editable_field_dict[alias] = renderer.getEditableField(alias)
 
         selection_name = field.get_value('selection_name')
         #LOG('ListBoxValidator', 0, 'field = %s, selection_name = %s' % (repr(field), repr(selection_name)))

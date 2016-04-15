@@ -29,7 +29,6 @@
 
 import unittest
 
-from Testing import ZopeTestCase
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5Type.tests.utils import LogInterceptor
 from Products.ERP5Type.Utils import cartesianProduct
@@ -46,7 +45,7 @@ class TestXMLMatrix(ERP5TypeTestCase, LogInterceptor):
     """
     Return the list of business templates.
     """
-    return ('erp5_base', 'erp5_trade',)
+    return ('erp5_base', 'erp5_pdm', 'erp5_trade',)
 
   def getTitle(self):
     """

@@ -22,7 +22,6 @@
   <item>Day Movement Group</item>
   <item>Delivery Causality Assignment Movement Group</item>
   <item>Invoice Movement Group</item>
-  <item>Mirror Movement Group</item>
   <item>Monthly Range Movement Group</item>
   <item>Nested Line Movement Group</item>
   <item>Order Movement Group</item>
@@ -30,6 +29,7 @@
   <item>Parent Delivery Property Movement Group</item>
   <item>Parent Explanation Movement Group</item>
   <item>Predicate</item>
+  <item>Previous Causality Movement Group</item>
   <item>Property Assignment Movement Group</item>
   <item>Property Grouping Movement Group</item>
   <item>Property Movement Group</item>
@@ -47,6 +47,9 @@
  <portal_type id="Embedded Folder">
   <item>Embedded File</item>
  </portal_type>
+ <portal_type id="Geographical Area">
+  <item>Geographical Location</item>
+ </portal_type>
  <portal_type id="Notification Message">
   <item>Role Definition</item>
  </portal_type>
@@ -60,7 +63,6 @@
   <item>Causality Movement Group</item>
   <item>Day Movement Group</item>
   <item>Delivery Causality Assignment Movement Group</item>
-  <item>Mirror Movement Group</item>
   <item>Monthly Range Movement Group</item>
   <item>Nested Line Movement Group</item>
   <item>Order Movement Group</item>

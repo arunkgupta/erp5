@@ -30,7 +30,6 @@
 import unittest
 import sys
 from unittest import expectedFailure
-from _mysql_exceptions import ProgrammingError
 
 from Testing import ZopeTestCase
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
@@ -1251,7 +1250,7 @@ class TestERP5Catalog(ERP5TypeTestCase, LogInterceptor):
     for i in range(0,100):
       message_list = portal_activities.getMessageList()
       for message in message_list:
-        #if message.method_id=='setHotReindexingState':
+        #if message.method_id=='_setHotReindexingState':
         #  import pdb;pdb.set_trace()
         if message.method_id in method_id_list:
           try:
@@ -1384,7 +1383,7 @@ class TestERP5Catalog(ERP5TypeTestCase, LogInterceptor):
                          'recursiveImmediateReindexObject',
                          'playBackRecordedObjectList',
                          'getId',
-                         'setHotReindexingState'))
+                         '_setHotReindexingState'))
     self.assertEqual(portal_catalog.getHotReindexingState(),
                       HOT_REINDEXING_DOUBLE_INDEXING_STATE)
     # Now we have started an double indexing
@@ -1877,8 +1876,10 @@ class TestERP5Catalog(ERP5TypeTestCase, LogInterceptor):
     # by searchFolder.
     # This will work as long as Bank Account are associated to a workflow that
     # allow deletion.
+    self.login()
     obj2.delete()
     self.tic()
+    self.login('bob')
     self.assertEqual([], [x.getObject() for x in
                            obj.searchFolder(portal_type='Bank Account')])
 
@@ -4059,6 +4060,51 @@ VALUES
     del query_lj['grand_parent_portal_type']
     self.assertEqual([x.getObject() for x in catalog.searchResults(**query_lj)],
                      [org_a.default_address])
+
+  def testSearchAndActivateWithGroupMethodId(self):
+    """
+    Make sure searchAndActivate method could be used with a grouping method,
+    and in particular make sure sure searchAndActivate can calls himself
+    properly.
+
+    We create 300 organisations and use a group method cost of 0.5.
+    So this means searchAndActivate should first create 200 activities
+    that will be grouped by 2. Then searchAndActivate will call himself
+    another time to activate the last 100 organisations, and in their turn
+    they will be grouped by 2.
+    """
+    group_method_call_list = []
+    def doSomething(self, message_list):
+      r = []
+      for m in message_list:
+        m.result = r.append(m.object.getPath())
+      r.sort()
+      group_method_call_list.append(r)
+    self.portal.portal_activities.__class__.doSomething = doSomething
+    now = DateTime()
+    try:
+        organisation_list = []
+        for x in xrange(0,300):
+          organisation_list.append(
+            self.portal.organisation_module.newContent().getPath())
+        self.tic()
+        self.portal.portal_catalog.searchAndActivate(
+             creation_date={'query': now, 'range': 'min'},
+             method_id="dummyDoSomething",
+             group_kw = {"group_method_id" : "portal_activities/doSomething",
+                         "group_method_cost": 0.5},
+        )
+        self.tic()
+        self.assertEqual(150, len(group_method_call_list))
+        organisation_call_list = []
+        for call_path_list in group_method_call_list:
+          self.assertEqual(2, len(call_path_list))
+          organisation_call_list.extend(call_path_list)
+        organisation_call_list.sort()
+        organisation_list.sort()
+        self.assertEqual(organisation_call_list, organisation_list)
+    finally:
+      del self.portal.portal_activities.__class__.doSomething
 
 def test_suite():
   suite = unittest.TestSuite()

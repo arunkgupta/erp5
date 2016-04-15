@@ -226,8 +226,8 @@ class TestSQLCatalog(ERP5TypeTestCase):
 
   def catalog(self, reference_tree, kw, check_search_text=True,
       check_select_expression=True, expected_failure=False):
-    reference_param_dict = self._catalog._queryResults(query_table='foo', **kw)
-    query = self._catalog.buildQuery(kw)
+    reference_param_dict = self._catalog.buildSQLQuery(query_table='foo', **kw)
+    query = self._catalog.buildEntireQuery(kw).query
     assertEqual = self.assertEqual
     if expected_failure:
       assertEqual = unittest.expectedFailure(assertEqual)
@@ -236,7 +236,7 @@ class TestSQLCatalog(ERP5TypeTestCase):
     search_text = query.asSearchTextExpression(self._catalog)
     if check_search_text:
       # XXX: sould "keyword" be always used for search text searches ?
-      search_text_param_dict = self._catalog._queryResults(query_table='foo', keyword=search_text)
+      search_text_param_dict = self._catalog.buildSQLQuery(query_table='foo', keyword=search_text)
       if not check_select_expression:
         search_text_param_dict.pop('select_expression')
         reference_param_dict.pop('select_expression')
@@ -698,7 +698,7 @@ class TestSQLCatalog(ERP5TypeTestCase):
     # upgrade path from old ZSQLCatalog versions where pre-mapped columns were
     # used in their select_expression. This must only happen in the
     # "{column: None}" form, as otherwise it's the user explicitely asking for
-    # such alias (which is not strictly invalid).
+    # such alias (which is not strictly invalid).
     sql_expression = self.asSQLExpression({'select_dict': {
       'foo.default': None,
       'foo.keyword': 'foo.keyword',
@@ -708,7 +708,7 @@ class TestSQLCatalog(ERP5TypeTestCase):
     self.assertFalse('foo.default' in select_dict, select_dict)
     self.assertTrue('foo.keyword' in select_dict, select_dict)
     # Variant: same operation, but this time stripping generates an ambiguity.
-    # That must be detected and cause a mapping exception.
+    # That must be detected and cause a mapping exception.
     self.assertRaises(ValueError, self.asSQLExpression, {'select_dict': {
         'foo.ambiguous_mapping': None,
         'bar.ambiguous_mapping': None,
@@ -728,27 +728,27 @@ class TestSQLCatalog(ERP5TypeTestCase):
     order_by_expression = sql_expression.getOrderByExpression()
     self.assertNotEqual(order_by_expression, '')
     # ... and not sort by relevance
-    self.assertFalse('MATCH' in order_by_expression, order_by_expression)
+    self.assertEqual('`foo`.`fulltext`', order_by_expression)
     # order_by_list on fulltext column + '__score__, resulting "ORDER BY" must be non-empty.
     sql_expression = self.asSQLExpression({'fulltext': 'foo',
       'order_by_list': [('fulltext__score__', ), ]})
     order_by_expression = sql_expression.getOrderByExpression()
     self.assertNotEqual(order_by_expression, '')
     # ... and must sort by relevance
-    self.assertTrue('MATCH' in order_by_expression, order_by_expression)
+    self.assertEqual('foo_fulltext__score__', order_by_expression)
     # ordering on fulltext column with sort order specified must preserve
     # sorting by relevance.
     for direction in ('ASC', 'DESC'):
       sql_expression = self.asSQLExpression({'fulltext': 'foo',
         'order_by_list': [('fulltext__score__', direction), ]})
       order_by_expression = sql_expression.getOrderByExpression()
-      self.assertTrue('MATCH' in order_by_expression, (order_by_expression, direction))
+      self.assertEqual('foo_fulltext__score__ %s' % direction, order_by_expression)
     # Providing a None cast should work too
     for direction in ('ASC', 'DESC'):
       sql_expression = self.asSQLExpression({'fulltext': 'foo',
         'order_by_list': [('fulltext__score__', direction, None), ]})
       order_by_expression = sql_expression.getOrderByExpression()
-      self.assertTrue('MATCH' in order_by_expression, (order_by_expression, direction))
+      self.assertEqual('foo_fulltext__score__ %s' % direction, order_by_expression)
 
   def test_logicalOperators(self):
     self.catalog(ReferenceQuery(ReferenceQuery(operator='=', default='AN ORB'),
@@ -790,6 +790,36 @@ class TestSQLCatalog(ERP5TypeTestCase):
   def test_searchTextInDictQuery(self):
     self._searchTextInDictQuery('date')
     self._searchTextInDictQuery('related_date')
+
+  def test_buildOrderByList(self):
+    order_by_list = self._catalog.buildOrderByList(
+      sort_on='default',
+    )
+    self.assertEqual(order_by_list, [['default']])
+    order_by_list = self._catalog.buildOrderByList(
+      sort_on='default',
+      sort_order='DESC',
+    )
+    self.assertEqual(order_by_list, [['default', 'DESC']])
+    order_by_list = self._catalog.buildOrderByList(
+      sort_on=[['default', 'DESC', 'INT']]
+    )
+    self.assertEqual(order_by_list, [['default', 'DESC', 'INT']])
+    order_by_list = self._catalog.buildOrderByList(
+      order_by_expression='default'
+    )
+    order_by_list = self._catalog.buildOrderByList(
+      order_by_expression='default DESC'
+    )
+    self.assertEqual(order_by_list, [['default', 'DESC']])
+    order_by_list = self._catalog.buildOrderByList(
+      order_by_expression='CAST(default AS INT) DESC'
+    )
+    self.assertEqual(order_by_list, [['CAST(default AS INT)', 'DESC']])
+    order_by_list = self._catalog.buildOrderByList(
+      order_by_expression='CAST(default AS INT)'
+    )
+    self.assertEqual(order_by_list, [['CAST(default AS INT)']])
 
 ##return catalog(title=Query(title='a', operator='not'))
 #return catalog(title={'query': 'a', 'operator': 'not'})

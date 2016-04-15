@@ -86,10 +86,12 @@ class Preference( Folder ):
     self._clearCache()
     Folder._edit(self, **kw)
 
-  def enable(self):
+  security.declareProtected(Permissions.ModifyPortalContent, 'enable')
+  def enable(self, **kw):
     """Workflow method"""
     self._clearCache()
 
-  def disable(self):
+  security.declareProtected(Permissions.ModifyPortalContent, 'disable')
+  def disable(self, **kw):
     """Workflow method"""
     self._clearCache()

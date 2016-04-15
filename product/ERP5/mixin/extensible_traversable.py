@@ -35,6 +35,7 @@ from Products.ERP5Type.ExtensibleTraversable import ExtensibleTraversableMixIn
 from Products.ERP5Type.Cache import getReadOnlyTransactionCache
 from AccessControl import ClassSecurityInfo, getSecurityManager
 from AccessControl.SecurityManagement import newSecurityManager, setSecurityManager
+from Products.ERP5Type.Globals import InitializeClass
 from Products.ERP5Type import Permissions
 from Products.CMFCore.utils import getToolByName, _checkConditionalGET, _setCacheHeaders, _ViewEmulator
 from OFS.Image import File as OFSFile
@@ -42,13 +43,11 @@ from warnings import warn
 import sys
 from base64 import decodestring
 from Products.ERP5Type.UnrestrictedMethod import unrestricted_apply
-
+from Products.ERP5.Document.Document import ConversionError, NotConvertedError
 
 # XXX: these duplicate ones in ERP5.Document
 _MARKER = []
 EMBEDDED_FORMAT = '_embedded'
-class ConversionError(Exception):pass
-class NotConvertedError(Exception):pass
 
 class BaseExtensibleTraversableMixin(ExtensibleTraversableMixIn):
   """
@@ -171,6 +170,8 @@ class BaseExtensibleTraversableMixin(ExtensibleTraversableMixIn):
     if document is not None:
       return document.__of__(self)
 
+InitializeClass(BaseExtensibleTraversableMixin)
+
 class DocumentExtensibleTraversableMixin(BaseExtensibleTraversableMixin):
   """
   This class provides a implementation of IExtensibleTraversable for Document classed based documents.
@@ -228,4 +229,3 @@ class OOoDocumentExtensibleTraversableMixin(BaseExtensibleTraversableMixin):
     if user is not None:
       setSecurityManager(old_manager)
     return document
-

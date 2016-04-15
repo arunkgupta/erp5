@@ -93,6 +93,7 @@ class SimulatedDeliveryBuilder(BuilderMixin):
                     , PropertySheet.DeliveryBuilder
                     )
 
+  security.declarePrivate('callBeforeBuildingScript')
   def callBeforeBuildingScript(self):  # XXX-JPS
     """
       Redefine this method, because it seems nothing interesting can be
@@ -100,6 +101,7 @@ class SimulatedDeliveryBuilder(BuilderMixin):
     """
     pass
 
+  security.declarePrivate('searchMovementList')
   @UnrestrictedMethod
   def searchMovementList(self, applied_rule_uid=None, **kw):
     """
@@ -189,6 +191,8 @@ class SimulatedDeliveryBuilder(BuilderMixin):
       delivery_relative_url,
       divergence_to_adopt_list=divergence_to_adopt_list)
 
+  security.declareProtected(Permissions.ModifyPortalContent,
+                            'solveDeliveryGroupDivergence')
   @UnrestrictedMethod
   def solveDeliveryGroupDivergence(self, delivery_relative_url,
                                    property_dict=None):
@@ -314,12 +318,12 @@ class SimulatedDeliveryBuilder(BuilderMixin):
 
     for s_m_list_per_movement in delivery_dict.values():
       total_quantity = sum([quantity_dict.get(s_m,
-                                              s_m.getMappedProperty('quantity')) \
+                                              s_m.getProperty('quantity')) \
                             for s_m in s_m_list_per_movement])
       if total_quantity != 0.0:
         for s_m in s_m_list_per_movement:
           delivery_ratio = quantity_dict.get(s_m,
-                                             s_m.getMappedProperty('quantity')) \
+                                             s_m.getProperty('quantity')) \
                                              / total_quantity
           s_m.edit(delivery_ratio=delivery_ratio)
       else:
@@ -333,6 +337,8 @@ class SimulatedDeliveryBuilder(BuilderMixin):
 
     return delivery_list
 
+  security.declareProtected(Permissions.ModifyPortalContent,
+                            'solveDivergence')
   solveDivergence = UnrestrictedMethod(_solveDivergence)
 
   def _createDelivery(self, delivery_module, movement_list, activate_kw):

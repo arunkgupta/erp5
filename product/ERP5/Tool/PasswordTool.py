@@ -43,6 +43,15 @@ from Products.ERP5Type.Globals import PersistentMapping
 from BTrees.OOBTree import OOBTree
 from urllib import urlencode
 
+redirect_path = '/login_form'
+def redirect(REQUEST, site_url, message):
+  if REQUEST is not None and getattr(REQUEST.RESPONSE, 'redirect', None) is not None:
+    parameter = urlencode({'portal_status_message': message})
+    ret_url = '%s%s?%s' % (site_url, redirect_path, parameter)
+    return REQUEST.RESPONSE.redirect( ret_url )
+  else:
+    return message
+
 class PasswordTool(BaseTool):
   """
     PasswordTool is used to allow a user to change its password
@@ -101,7 +110,7 @@ class PasswordTool(BaseTool):
   def getExpirationDateForKey(self, key=None):
     return self._password_request_dict[key][1]
 
-
+  security.declarePublic('mailPasswordResetRequest')
   def mailPasswordResetRequest(self, user_login=None, REQUEST=None,
                                notification_message=None, sender=None,
                                store_as_event=False,
@@ -150,12 +159,7 @@ class PasswordTool(BaseTool):
             "User ${user} does not have an email address, please contact site "
             "administrator directly", mapping={'user':user_login})
     if msg:
-      if REQUEST is not None:
-        parameter = urlencode(dict(portal_status_message=msg))
-        ret_url = '%s/login_form?%s' % \
-                  (site_url, parameter)
-        return REQUEST.RESPONSE.redirect( ret_url )
-      return msg
+      return redirect(REQUEST, site_url, msg)
 
     key = self.getResetPasswordKey(user_login=user_login,
                                    expiration_date=expiration_date)
@@ -202,11 +206,8 @@ class PasswordTool(BaseTool):
                                                             store_as_event=store_as_event,
                                                             message_text_format=message_text_format,
                                                             event_keyword_argument_dict=event_keyword_argument_dict)
-    if REQUEST is not None:
-      msg = translateString("An email has been sent to you.")
-      parameter = urlencode(dict(portal_status_message=msg))
-      ret_url = '%s/login_form?%s' % (site_url, parameter)
-      return REQUEST.RESPONSE.redirect( ret_url )
+    return redirect(REQUEST, site_url,
+                    translateString("An email has been sent to you."))
 
   def _generateUUID(self, args=""):
     """
@@ -226,33 +227,7 @@ class PasswordTool(BaseTool):
     data = ' '.join((str(t), str(r), str(a), str(args)))
     return md5(data).hexdigest()
 
-  def resetPassword(self, reset_key=None, REQUEST=None):
-    """
-    """
-    # XXX-Aurel : is it used ?
-    if REQUEST is None:
-      REQUEST = get_request()
-    user_login, expiration_date = self._password_request_dict.get(reset_key, (None, None))
-    site_url = self.getPortalObject().absolute_url()
-    if REQUEST and 'came_from' in REQUEST:
-      site_url = REQUEST.came_from
-    if reset_key is None or user_login is None:
-      ret_url = '%s/login_form' % site_url
-      return REQUEST.RESPONSE.redirect( ret_url )
-
-    # check date
-    current_date = DateTime()
-    if current_date > expiration_date:
-      msg = translateString("Date has expire.")
-      parameter = urlencode(dict(portal_status_message=msg))
-      ret_url = '%s/login_form?%s' % (site_url, parameter)
-      return REQUEST.RESPONSE.redirect( ret_url )
-
-    # redirect to form as all is ok
-    REQUEST.set("password_key", reset_key)
-    return self.reset_password_form(REQUEST=REQUEST)
-
-
+  security.declareProtected(Permissions.ModifyPortalContent, 'removeExpiredRequests')
   def removeExpiredRequests(self):
     """
     Browse dict and remove expired request
@@ -263,6 +238,7 @@ class PasswordTool(BaseTool):
       if date < current_date:
         del password_request_dict[key]
 
+  security.declarePublic('changeUserPassword')
   def changeUserPassword(self, password, password_key, password_confirm=None,
                          user_login=None, REQUEST=None, **kw):
     """
@@ -274,13 +250,7 @@ class PasswordTool(BaseTool):
       #      calling code and making mistakes more difficult
       # BBB: should probably not translate message when REQUEST is None
       message = translateString(message)
-      if REQUEST is None:
-        return message
-      return REQUEST.RESPONSE.redirect(
-        site_url + '/login_form?' + urlencode({
-          'portal_status_message': message,
-        })
-      )
+      return redirect(REQUEST, site_url, message)
 
     if REQUEST is None:
       REQUEST = get_request()
@@ -308,11 +278,7 @@ class PasswordTool(BaseTool):
     person = persons[0]
     person._forceSetPassword(password)
     person.reindexObject()
-    if REQUEST is not None:
-      return REQUEST.RESPONSE.redirect(
-        site_url + '/login_form?' + urlencode({
-          'portal_status_message': translateString("Password changed."),
-        })
-      )
+    return redirect(REQUEST, site_url,
+                    translateString("Password changed."))
 
 InitializeClass(PasswordTool)

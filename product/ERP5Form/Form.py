@@ -45,6 +45,7 @@ from ZODB.POSException import ConflictError
 from zExceptions import Redirect
 from Acquisition import aq_base
 from Products.PageTemplates.Expressions import SecureModuleImporter
+from zExceptions import Forbidden
 
 from Products.ERP5Type.PsycoWrapper import psyco
 from Products.ERP5Type.Base import Base
@@ -552,7 +553,7 @@ def create_settings_form():
     unicode_mode = fields.CheckBoxField('unicode_mode',
                                         title='Form properties are unicode',
                                         default=0,
-                                        required=1)
+                                        required=0)
     edit_order = fields.LinesField('edit_order',
                                    title='Setters for these properties should be'
                                    '<br /> called by edit() in the defined order')
@@ -710,6 +711,7 @@ class ERP5Form(Base, ZMIForm, ZopePageTemplate):
       return ret
 
     # Utilities
+    security.declareProtected('View', 'ErrorFields')
     def ErrorFields(self, validation_errors):
         """
             Create a dictionnary of validation_errors
@@ -771,6 +773,8 @@ class ERP5Form(Base, ZMIForm, ZopePageTemplate):
         """Handle HTTP PUT requests."""
         self.dav__init(REQUEST, RESPONSE)
         self.dav__simpleifhandler(REQUEST, RESPONSE, refresh=1)
+        if REQUEST.environ['REQUEST_METHOD'] != 'PUT':
+            raise Forbidden, 'REQUEST_METHOD should be PUT.'
         body=REQUEST.get('BODY', '')
         # Empty the form (XMLToForm is unable to empty things before reopening)
         for k in self.get_field_ids():
@@ -788,6 +792,7 @@ class ERP5Form(Base, ZMIForm, ZopePageTemplate):
 
     manage_FTPput = PUT
 
+    security.declarePrivate('getSimilarSkinFolderIdList')
     def getSimilarSkinFolderIdList(self):
       """
       Find other skins id installed in the same time

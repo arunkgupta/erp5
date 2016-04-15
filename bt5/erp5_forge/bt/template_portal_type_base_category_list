@@ -1,8 +1,6 @@
 Bug Module | business_application
 Bug | aggregate
-Bug | bug_difficulty
-Bug | bug_priority
-Bug | bug_severity
+Bug | follow_up
 Glossary Module | business_application
 Glossary Term | business_field
 Glossary Term | causality

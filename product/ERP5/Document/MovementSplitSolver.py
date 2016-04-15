@@ -58,8 +58,7 @@ class MovementSplitSolver(SolverMixin, ConfigurableMixin, XMLObject):
                             interfaces.IConfigurable,
                            )
 
-  # ISolver Implementation
-  def solve(self, activate_kw=None):
+  def _solve(self, activate_kw=None):
     """
     This method splits a Delivery and move movements in to a new
     Delivery. Splitting is done by duplicating the Delivery, removing

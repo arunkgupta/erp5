@@ -1,7 +1,5 @@
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
-from zLOG import LOG,INFO,ERROR 
 import json 
-from Products.ERP5Type.Log import log
 from time import sleep
 
 class TestTaskDistribution(ERP5TypeTestCase):
@@ -106,14 +104,15 @@ class TestTaskDistribution(ERP5TypeTestCase):
                     int_index = priority,
                     specialise_value = specialise_value,
                    )
+
+      test_suite.setClusterConfiguration(cluster_configuration)
       if portal_type == "Scalability Test Suite":
         test_suite.setGraphCoordinate(graph_coordinate)
-        test_suite.setClusterConfiguration(cluster_configuration)
 
 
       test_suite.newContent( portal_type= 'Test Suite Repository',
                         branch = 'master',
-                        git_url = 'http://git.erp5.org/repos/erp5.git',
+                        git_url = 'https://lab.nexedi.com/nexedi/erp5.git',
                         buildout_section_id  = 'erp5',
                         profile_path = 'software-release/software.cfg'
                         )
@@ -248,7 +247,7 @@ class TestTaskDistribution(ERP5TypeTestCase):
   def _cleanupTestResult(self):
     self.tic()
     cleanup_state_list = ['started', 'stopped']
-    test_list =  self.test_result_module.searchFolder(title="TEST FOO",
+    test_list =  self.test_result_module.searchFolder(title='"TEST FOO" OR "test suite %"',
                simulation_state=cleanup_state_list)
     for test_result in test_list:
       if test_result.getSimulationState() in cleanup_state_list:
@@ -330,8 +329,9 @@ class TestTaskDistribution(ERP5TypeTestCase):
 
   def test_07_reportTaskFailure(self):
     test_result_path, revision = self._createTestResult(node_title="Node0")
-    test_result_path, revision = self._createTestResult(node_title="Node1")
-    test_result = self.getPortalObject().unrestrictedTraverse(test_result_path)    
+    next_test_result_path, revision = self._createTestResult(node_title="Node1")
+    self.assertEqual(test_result_path, next_test_result_path)
+    test_result = self.getPortalObject().unrestrictedTraverse(test_result_path)
     self.assertEqual("started", test_result.getSimulationState())
     node_list = test_result.objectValues(portal_type="Test Result Node",
                                          sort_on=[("title", "ascending")])
@@ -391,6 +391,19 @@ class TestTaskDistribution(ERP5TypeTestCase):
 
   def test_10_cancelTestResult(self):
     pass
+
+  def test_10b_generateConfiguration(self):
+    """
+    It shall be possible on a test suite to define configuration we would like
+    to use to create slapos instance.
+    """
+    test_suite, = self._createTestSuite(cluster_configuration=None)
+    self.tic()
+    self.assertEquals('{"configuration_list": [{}]}', self.distributor.generateConfiguration(test_suite.getTitle()))
+    test_suite.setClusterConfiguration("{'foo': 3}")
+    self.assertEquals('{"configuration_list": [{}]}', self.distributor.generateConfiguration(test_suite.getTitle()))
+    test_suite.setClusterConfiguration('{"foo": 3}')
+    self.assertEquals('{"configuration_list": [{"foo": 3}]}', self.distributor.generateConfiguration(test_suite.getTitle()))
 
   def _checkTestSuiteAggregateList(self, *args):
     self.tic()
@@ -805,3 +818,4 @@ class TestTaskDistribution(ERP5TypeTestCase):
 
     def test_19_testMultiDistributor(self):
       pass
+

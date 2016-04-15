@@ -49,16 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>context.z_delete_from_roles_and_users(\n
-  uid=context.Base_filterSecurityUidDict(\n
-    context.getPortalObject().portal_catalog.getSQLCatalog(catalog_id).security_uid_dict,\n
-    {x.security_uid for x in context.z_get_referenced_security_uid_set()},\n
-  ),\n
-)\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>catalog_id=None</string> </value>
         </item>

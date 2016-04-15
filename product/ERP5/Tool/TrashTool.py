@@ -55,6 +55,7 @@ class TrashTool(BaseTool):
   security.declareProtected(Permissions.ManagePortal, 'manage_overview' )
   manage_overview = DTMLFile( 'explainTrashTool', _dtmldir )
 
+  security.declarePrivate('backupObject')
   def backupObject(self, trashbin, container_path, object_id, save, **kw):
     """
       Backup an object in a trash bin
@@ -83,7 +84,7 @@ class TrashTool(BaseTool):
       if object_id not in backup_object_container.objectIds():
         # export object
         object_path = container_path + [object_id]
-        obj = self.unrestrictedTraverse(object_path)
+        obj = self.unrestrictedTraverse(object_path, None)
         if obj is not None:
           connection = obj._p_jar
           o = obj
@@ -139,11 +140,10 @@ class TrashTool(BaseTool):
     if not keep_sub:
       # export subobjects
       if save:
-        obj = backup_object_container._getOb(object_id)
-        object_path = list(obj.getPhysicalPath())
+        obj = backup_object_container._getOb(object_id, None)
       else:
         object_path = container_path + [object_id]
-        obj = self.unrestrictedTraverse(object_path)
+        obj = self.unrestrictedTraverse(object_path, None)
       if obj is not None:
         for subobject_id in list(obj.objectIds()):
           subobject = obj[subobject_id]
@@ -159,6 +159,7 @@ class TrashTool(BaseTool):
               obj._cleanup()
     return subobjects_dict
 
+  security.declarePrivate('newTrashBin')
   def newTrashBin(self, bt_title='trash', bt=None):
     """
       Create a new trash bin at upgrade of bt
@@ -191,6 +192,7 @@ class TrashTool(BaseTool):
                               )
     return trashbin
 
+  security.declareProtected(Permissions.ManagePortal, 'getTrashBinObjectsList')
   def getTrashBinObjectsList(self, trashbin):
     """
       Return a list of trash objects for a given trash bin

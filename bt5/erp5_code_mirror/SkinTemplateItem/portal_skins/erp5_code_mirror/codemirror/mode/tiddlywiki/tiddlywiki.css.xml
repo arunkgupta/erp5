@@ -7,6 +7,10 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>__name__</string> </key>
             <value> <string>tiddlywiki.css</string> </value>
         </item>
@@ -21,24 +25,6 @@
             <value>
               <dictionary/>
             </value>
-        </item>
-        <item>
-            <key> <string>raw</string> </key>
-            <value> <string>span.cm-underlined {\n
-  text-decoration: underline;\n
-}\n
-span.cm-strikethrough {\n
-  text-decoration: line-through;\n
-}\n
-span.cm-brace {\n
-  color: #170;\n
-  font-weight: bold;\n
-}\n
-span.cm-table {\n
-  color: blue;\n
-  font-weight: bold;\n
-}\n
-</string> </value>
         </item>
       </dictionary>
     </pickle>

@@ -90,9 +90,37 @@ class TestPerson(ERP5TypeTestCase):
     self.assertEqual(person_copy_obj.getReference(), person.getReference())
 
   # title & first_name, last_name
-  def testEmptyTitle(self):
-    p = self._makeOne()
-    self.assertEqual('', p.getTitle())
+  def testEmptyTitleFallbackOnId(self):
+    p = self._makeOne(id=self.id())
+    self.assertEqual(self.id(), p.getTitle())
+
+  def testEmptyTranslatedTitleFallbackOnId(self):
+    p = self._makeOne(id=self.id())
+    self.assertEqual(self.id(), p.getTranslatedTitle())
+
+  def testEmptyCompactTitleFallbackOnId(self):
+    p = self._makeOne(id=self.id())
+    self.assertEqual(self.id(), p.getCompactTitle())
+
+  def testEmptyCompactTranslatedTitleFallbackOnId(self):
+    p = self._makeOne(id=self.id())
+    self.assertEqual(self.id(), p.getCompactTranslatedTitle())
+
+  def testEmptyTitleFallbackOnReference(self):
+    p = self._makeOne(reference='reference')
+    self.assertEqual('reference', p.getTitle())
+
+  def testEmptyTranslatedTitleFallbackOnReference(self):
+    p = self._makeOne(reference='reference')
+    self.assertEqual('reference', p.getTranslatedTitle())
+
+  def testEmptyCompactTitleFallbackOnReference(self):
+    p = self._makeOne(reference='reference')
+    self.assertEqual('reference', p.getCompactTitle())
+
+  def testEmptyCompactTranslatedTitleFallbackOnReference(self):
+    p = self._makeOne(reference='reference')
+    self.assertEqual('reference', p.getCompactTranslatedTitle())
 
   def testSetFirstName(self):
     p = self._makeOne()
@@ -109,6 +137,24 @@ class TestPerson(ERP5TypeTestCase):
     p.setFirstName('first')
     p.setLastName('last')
     self.assertEqual('first last', p.getTitle())
+    p.setMiddleName('middle')
+    self.assertEqual('first middle last', p.getTitle())
+
+  def testTranslatedTitleFromFirstLastName(self):
+    p = self._makeOne(id='person')
+    p.setFirstName('first')
+    p.setLastName('last')
+    self.assertEqual('first last', p.getTranslatedTitle())
+    p.setMiddleName('middle')
+    self.assertEqual('first middle last', p.getTranslatedTitle())
+
+  def testCompactTranslatedTitleFromFirstLastName(self):
+    p = self._makeOne(id='person')
+    p.setFirstName('first')
+    p.setLastName('last')
+    self.assertEqual('first last', p.getCompactTranslatedTitle())
+    p.setMiddleName('middle')
+    self.assertEqual('first middle last', p.getCompactTranslatedTitle())
 
   def testEditFirstNameLastName(self):
     # using 'edit' method
@@ -118,13 +164,19 @@ class TestPerson(ERP5TypeTestCase):
     self.assertEqual('first', p.getFirstName())
     self.assertEqual('last', p.getLastName())
     self.assertEqual('first last', p.getTitle())
+    self.assertEqual('first last', p.getTranslatedTitle())
+    p.edit(middle_name='middle')
+    self.assertEqual('first middle last', p.getTitle())
+    self.assertEqual('first middle last', p.getTranslatedTitle())
 
   def testEditTitleFirstNameLastName(self):
     p = self._makeOne(id='person')
     p.edit( first_name='first',
             last_name='last',
             title='title' )
-    # no infinite loop :) but there's no guarantee on the behaviour
+    self.assertEqual('title', p.getTitle())
+    p.edit(middle_name='middle')
+    self.assertEqual('title', p.getTitle())
 
   def testGetTitleOrId(self):
     p = self._makeOne(id='person')
@@ -135,6 +187,10 @@ class TestPerson(ERP5TypeTestCase):
             last_name='last', )
     self.assertEqual('first last', p.getTitleOrId())
     self.assertEqual('first last', p.title_or_id())
+
+    p.edit(middle_name='middle')
+    self.assertEqual('first middle last', p.getTitleOrId())
+    self.assertEqual('first middle last', p.title_or_id())
 
   def testHasTitle(self):
     p = self._makeOne(id='person')

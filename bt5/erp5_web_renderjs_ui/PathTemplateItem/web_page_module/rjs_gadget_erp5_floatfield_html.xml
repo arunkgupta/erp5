@@ -102,31 +102,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-<!DOCTYPE html>\n
-<html>\n
-  <head>\n
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />\n
-    <meta name="viewport" content="width=device-width, user-scalable=no" />\n
-    <title>ERP5 Floatfield</title>\n
-\n
-    <!-- renderjs -->\n
-    <script src="RSVP.js" type="text/javascript"></script>\n
-    <script src="renderjs.js" type="text/javascript"></script>\n
-    <!-- custom script -->\n
-    <script src="gadget_erp5_field_float.js" type="text/javascript"></script>\n
-\n
-  </head>\n
-  <body>\n
-    <input type=\'number\' step="0.00000001" />\n
-  </body>\n
-</html>
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Floatfield</string> </value>
         </item>
@@ -245,7 +220,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>sven</string> </value>
+                <value> <string>xiaowu</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -259,7 +234,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>937.51521.250.37802</string> </value>
+                <value> <string>940.63282.44183.51353</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -277,8 +252,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1411576768.35</float>
-                        <string>GMT</string>
+                        <float>1423905795.16</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

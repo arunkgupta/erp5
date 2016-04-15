@@ -49,42 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string encoding="cdata"><![CDATA[
-
-""" Rounds debit and credit lines on generated transactions, according to \n
-precision of this transaction\'s resource.\n
-"""\n
-precision = context.getQuantityPrecisionFromResource(context.getResource())\n
-resource = context.getResourceValue()\n
-\n
-line = None\n
-total_quantity = 0.0\n
-\n
-line_list = context.getMovementList(\n
-            portal_type=context.getPortalAccountingMovementTypeList())\n
-\n
-for line in line_list:\n
-  line_quantity = round(line.getQuantity(), precision)\n
-  line.setQuantity(line_quantity)\n
-  total_quantity += line_quantity\n
-\n
-# The total quantity should be zero with a little error, if simulation has been\n
-# completely applied, because the debit and the credit must be balanced. However,\n
-# this is not the case, if the delivery is divergent, as the builder does not\n
-# adopt prevision automatically, when a conflict happens between the simulation\n
-# and user-entered values.\n
-if abs(round(total_quantity, precision)) > 2 * resource.getBaseUnitQuantity():\n
-  return\n
-\n
-# if the difference is <= the base quantity unit, we round the last line.\n
-if line is not None:\n
-  line.setQuantity(round(line.getQuantity() - total_quantity, precision))\n
-
-
-]]></string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string></string> </value>
         </item>

@@ -43,6 +43,7 @@ from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
 ERP5TYPE_SECURITY_GROUP_ID_GENERATION_SCRIPT = 'ERP5Type_asSecurityGroupId'
 
 from TranslationProviderBase import TranslationProviderBase
+from Products.ERP5Type.Accessor.Translation import TRANSLATION_DOMAIN_CONTENT_TRANSLATION
 
 from sys import exc_info
 from zLOG import LOG, ERROR
@@ -74,7 +75,7 @@ class LocalRoleAssignorMixIn(object):
 
     zope.interface.implements(interfaces.ILocalRoleAssignor)
 
-    security.declarePrivate('updateLocalRolesOnObject')
+    security.declarePrivate('updateLocalRolesOnDocument')
     @UnrestrictedMethod
     def updateLocalRolesOnDocument(self, ob, user_name=None, reindex=True, activate_kw=()):
       """
@@ -163,8 +164,9 @@ class LocalRoleAssignorMixIn(object):
     def updateRoleMapping(self, REQUEST=None, form_id='', priority=3):
       """Update the local roles in existing objects.
       """
-      self.getPortalObject().portal_catalog.searchAndActivate(
+      self.getPortalObject().portal_catalog._searchAndActivate(
         'updateLocalRolesOnSecurityGroups',
+        restricted=False,
         method_kw={
           'activate_kw': {
             'priority': priority,
@@ -206,6 +208,8 @@ class LocalRoleAssignorMixIn(object):
         setattr(role, k, v)
       role.uid = None
       return self[self._setObject(role.id, role, set_owner=0)]
+
+InitializeClass(LocalRoleAssignorMixIn)
 
 class ERP5TypeInformation(XMLObject,
                           FactoryTypeInformation,
@@ -465,6 +469,34 @@ class ERP5TypeInformation(XMLObject,
                                    self.getPortalType(),
                                    type_property_sheet_value_list)
 
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getRecursivePropertySheetValueList')
+    def getRecursivePropertySheetValueList(self):
+      """
+      Get all the Property Sheets for this Portal Type, not only the one set on
+      'type_property_sheet' property but also the ones defined on
+      'property_sheets' property on each parent classes.
+      """
+      import erp5.portal_type
+      portal_type_class = getattr(erp5.portal_type, self.getId())
+      portal_type_class.loadClass()
+
+      # XXX-arnau: There should be no need of checking this property (IOW
+      # checking the MRO should be enough), but this is not enough for Portal
+      # Types Accessor Holder (erp5.accessor_holder.portal_type), used by
+      # Preferences for example (defining getAccessorHolderList() which
+      # returns a single Accessor Holder from several Property
+      # Sheets). Probably this behavior should be changed to have one Accessor
+      # Holder per Property Sheet ?
+      property_sheet_name_set = set(self.getTypePropertySheetList())
+
+      for klass in portal_type_class.mro():
+        if klass.__module__ == 'erp5.accessor_holder.property_sheet':
+          property_sheet_name_set.add(klass.__name__)
+
+      return getPropertySheetValueList(self.getPortalObject(),
+                                       property_sheet_name_set)
+
     # XXX these methods, _baseGetTypeClass, getTypeMixinList, and
     # getTypeInterfaceList, are required for a bootstrap issue that
     # the portal type class Base Type is required for _aq_dynamic on
@@ -517,7 +549,8 @@ class ERP5TypeInformation(XMLObject,
       """
       Return all the properties of the Portal Type
       """
-      cls = self.getPortalObject().portal_types.getPortalTypeClass(self.getId())
+      portal = self.getPortalObject()
+      cls = portal.portal_types.getPortalTypeClass(self.getId())
       return_set = set()
       for property_dict in cls.getAccessorHolderPropertyList(content=True):
         if property_dict['type'] == 'content':
@@ -528,6 +561,17 @@ class ERP5TypeInformation(XMLObject,
 
         if property_dict['storage_id']:
           return_set.add(property_dict['storage_id'])
+
+        if property_dict['translatable']:
+          domain_dict = self.getPropertyTranslationDomainDict()
+          domain = domain_dict.get(property_dict['id'])
+          if domain is None:
+            continue
+          if domain.getDomainName() == TRANSLATION_DOMAIN_CONTENT_TRANSLATION:
+            for language in portal.Localizer.get_languages():
+              return_set.add('%s_translated_%s' %
+                  (language.replace('-', '_'),
+                   property_dict['id']))
 
       return return_set
 
@@ -574,7 +618,8 @@ class ERP5TypeInformation(XMLObject,
       search_source_list += self.getTypeBaseCategoryList()
       return ' '.join(filter(None, search_source_list))
 
-    security.declarePrivate('getDefaultViewFor')
+    security.declareProtected(Permissions.AccessContentsInformation,
+                              'getDefaultViewFor')
     def getDefaultViewFor(self, ob, view='view'):
       """Return the object that renders the default view for the given object
       """

@@ -56,11 +56,7 @@
         <item>
             <key> <string>categories</string> </key>
             <value>
-              <tuple>
-                <string>gadget_render_type/gadget_render_type</string>
-                <string>gadget_render_type/synchronous</string>
-                <string>gadget_render_type/synchronous</string>
-              </tuple>
+              <tuple/>
             </value>
         </item>
         <item>

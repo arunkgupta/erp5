@@ -4,7 +4,6 @@ Coordinate
 StringAttributeMatchConstraint
 AttributeUnicityConstraint
 AccountingPreference
-AccountingRuleCellLine
 AccountingTransactionLineConstraint
 AcquiredProperty
 ActionInformation
@@ -191,3 +190,4 @@ Workflow
 XMLObject
 AttributeBlacklistedConstraint
 CaptchaPreference
+GeographicalPoint

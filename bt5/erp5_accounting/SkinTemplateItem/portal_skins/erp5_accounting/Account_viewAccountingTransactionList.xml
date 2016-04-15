@@ -101,6 +101,8 @@
                         <string>listbox_function</string>
                         <string>listbox_project</string>
                         <string>listbox_funding</string>
+                        <string>listbox_modification_date</string>
+                        <string>listbox_grouping_date</string>
                       </list>
                     </value>
                 </item>

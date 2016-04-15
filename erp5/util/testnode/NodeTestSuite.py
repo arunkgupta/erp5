@@ -58,7 +58,6 @@ class SlapOSInstance(object):
   def _checkData(self):
     pass
     
-    
 class NodeTestSuite(SlapOSInstance):
   """
   
@@ -66,6 +65,7 @@ class NodeTestSuite(SlapOSInstance):
   def __init__(self, reference):
     super(NodeTestSuite, self).__init__()
     self.reference = reference
+    self.cluster_configuration = {}
 
   def edit(self, **kw):
     super(NodeTestSuite, self).edit(**kw)
@@ -97,6 +97,9 @@ class NodeTestSuite(SlapOSInstance):
     suite_log_directory = os.path.join(self.log_directory,
                                        random_suite_folder_id)
     SlapOSControler.createFolders(suite_log_directory)
+    # XXX copy the whole content of the log viewer app
+    for fname in glob.glob(os.path.join(os.path.dirname(__file__), 'js-logtail', '*')):
+      shutil.copy(fname, suite_log_directory)
     self.suite_log_path = os.path.join(suite_log_directory,
                                        'suite.log')
     return self.getSuiteLogPath(), random_suite_folder_id

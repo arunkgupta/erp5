@@ -98,102 +98,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string>/*global window, rJS, RSVP, loopEventListener */\n
-/*jslint nomen: true, indent: 2, maxerr: 3 */\n
-(function (window, rJS, RSVP, loopEventListener) {\n
-  "use strict";\n
-\n
-  /////////////////////////////////////////////////////////////////\n
-  // Handlebars\n
-  /////////////////////////////////////////////////////////////////\n
-  // Precompile the templates while loading the first gadget instance\n
-  var gadget_klass = rJS(window),\n
-    source = gadget_klass.__template_element\n
-                         .getElementById("panel-template")\n
-                         .innerHTML,\n
-    panel_template = Handlebars.compile(source);\n
-\n
-  gadget_klass\n
-    /////////////////////////////////////////////////////////////////\n
-    // ready\n
-    /////////////////////////////////////////////////////////////////\n
-    // Init local properties\n
-    .ready(function (g) {\n
-      g.props = {};\n
-    })\n
-\n
-    // Assign the element to a variable\n
-    .ready(function (g) {\n
-      return g.getElement()\n
-        .push(function (element) {\n
-          g.props.element = element;\n
-        });\n
-    })\n
-\n
-    .declareAcquiredMethod("pleasePublishMyState", "pleasePublishMyState")\n
-    .declareAcquiredMethod("pleaseRedirectMyHash", "pleaseRedirectMyHash")\n
-    /////////////////////////////////////////////////////////////////\n
-    // declared methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareMethod(\'render\', function (option_dict) {\n
-      var append_class,\n
-        append_attribute,\n
-        placeholder = "",\n
-        is_disabled = option_dict.disabled,\n
-        search_gadget = this;\n
-\n
-      if (is_disabled) {\n
-        append_class = " ui-disabled";\n
-        append_attribute = \' disabled="disabled\';\n
-      }\n
-\n
-      search_gadget.props.element.innerHTML = panel_template({\n
-        widget_value: option_dict.extended_search || placeholder,\n
-        widget_theme: option_dict.theme || "c",\n
-        widget_status_attribute: append_attribute || placeholder,\n
-        widget_status_class: append_class || placeholder\n
-      });\n
-    })\n
-\n
-    .declareMethod(\'getContent\', function () {\n
-      var input = this.__element.querySelector(\'input\'),\n
-        result = {};\n
-\n
-      result[input.getAttribute(\'name\')] = input.value;\n
-      return result;\n
-    })\n
-\n
-    .declareService(function () {\n
-      var search_form = this;\n
-\n
-      function formSubmit() {\n
-        return new RSVP.Queue()\n
-          .push(function () {\n
-            return search_form.getContent();\n
-          })\n
-          .push(function (data) {\n
-            return search_form.pleasePublishMyState({\n
-              "extended_search": data.search\n
-            });\n
-          })\n
-          .push(function (url) {\n
-            return search_form.pleaseRedirectMyHash(url);\n
-          });\n
-      }\n
-\n
-      // Listen to form submit\n
-      return loopEventListener(\n
-        search_form.props.element.querySelector(\'form\'),\n
-        \'submit\',\n
-        false,\n
-        formSubmit\n
-      );\n
-    });\n
-\n
-}(window, rJS, RSVP, loopEventListener));</string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Search Field JS</string> </value>
         </item>
@@ -312,7 +216,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>sven</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -326,7 +230,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>938.24816.20339.61866</string> </value>
+                <value> <string>950.28962.48103.49971</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -344,8 +248,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1413819887.51</float>
-                        <string>GMT</string>
+                        <float>1460390605.12</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

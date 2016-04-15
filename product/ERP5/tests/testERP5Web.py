@@ -34,7 +34,6 @@ from unittest import expectedFailure, skip
 from AccessControl import Unauthorized
 from Testing import ZopeTestCase
 from DateTime import DateTime
-from Products.ERP5Type.TransactionalVariable import getTransactionalVariable
 from Products.ERP5Type.tests.ERP5TypeTestCase import ERP5TypeTestCase
 from Products.ERP5Type.tests.utils import DummyLocalizer
 from Products.ERP5Type.tests.utils import createZODBPythonScript
@@ -270,7 +269,7 @@ Hé Hé Hé!""", page.asText().strip())
     webpage_list = self.setupWebSitePages(prefix=page_reference)
 
     # set default web page for section
-    found_by_reference = portal.portal_catalog(name=page_reference,
+    found_by_reference = portal.portal_catalog(reference=page_reference,
                                                portal_type='Web Page')
     found = found_by_reference[0].getObject()
     websection.edit(categories_list=['aggregate/%s' % found.getRelativeUrl()])

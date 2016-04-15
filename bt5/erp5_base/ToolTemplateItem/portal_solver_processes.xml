@@ -7,7 +7,27 @@
     <pickle>
       <dictionary>
         <item>
-            <key> <string>_Use_external_editor_Permission</string> </key>
+            <key> <string>_Access_contents_information_Permission</string> </key>
+            <value>
+              <tuple>
+                <string>Auditor</string>
+                <string>Manager</string>
+                <string>Member</string>
+              </tuple>
+            </value>
+        </item>
+        <item>
+            <key> <string>_Add_portal_content_Permission</string> </key>
+            <value>
+              <tuple>
+                <string>Author</string>
+                <string>Manager</string>
+                <string>Member</string>
+              </tuple>
+            </value>
+        </item>
+        <item>
+            <key> <string>_View_Permission</string> </key>
             <value>
               <tuple>
                 <string>Manager</string>

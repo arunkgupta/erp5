@@ -222,8 +222,7 @@ class Predicate(XMLObject):
     catalog_kw = {}
     catalog_kw.update(kw) # query_table, REQUEST, ignore_empty_string, **kw
     criterion_list = self.getCriterionList()
-    # BBB: accessor is not present on old Predicate property sheet.
-    if criterion_list or getattr(self, 'isEmptyPredicateValid', lambda: True)():
+    if criterion_list:
       for criterion in criterion_list:
         p = criterion.property
         if criterion.min:
@@ -248,10 +247,6 @@ class Predicate(XMLObject):
             else:
               f = (i,) if i in f else ()
             catalog_kw[p] = list(f)
-    else:
-      # By catalog definition, no object has uid 0, so this condition forces an
-      # empty result.
-      catalog_kw['uid'] = 0
 
     portal_catalog = getToolByName(self, 'portal_catalog')
 
@@ -302,6 +297,13 @@ class Predicate(XMLObject):
       if and_expression:
         multimembership_select_list.append(and_expression)
 
+    # BBB: accessor is not present on old Predicate property sheet.
+    if not getattr(self, 'isEmptyCriterionValid', lambda: True)() and \
+      not catalog_kw and not membership_select_list and not multimembership_select_list:
+      # By catalog definition, no object has uid 0, so this condition forces an
+      # empty result.
+      catalog_kw['uid'] = 0
+
     # Build the join where expression
     join_select_list = []
     for k in from_table_dict.iterkeys():
@@ -313,8 +315,6 @@ class Predicate(XMLObject):
     # Now merge identity and membership criteria
     if len(sql_text):
       catalog_kw['where_expression'] = SQLQuery(sql_text)
-    else:
-      catalog_kw['where_expression'] = ''
     # force implicit join
     catalog_kw['implicit_join'] = True
     sql_query = portal_catalog.buildSQLQuery(**catalog_kw)
@@ -355,12 +355,14 @@ class Predicate(XMLObject):
   security.declareProtected( Permissions.AccessContentsInformation, 'asSqlJoinExpression' )
   asSqlJoinExpression = asSQLJoinExpression
 
+  security.declareProtected(Permissions.AccessContentsInformation, 'searchResults')
   def searchResults(self, **kw):
     """
     """
     portal_catalog = getToolByName(self, 'portal_catalog')
     return portal_catalog.searchResults(build_sql_query_method=self.buildSQLQuery,**kw)
 
+  security.declareProtected(Permissions.AccessContentsInformation, 'countResults')
   def countResults(self, REQUEST=None, used=None, **kw):
     """
     """
@@ -600,6 +602,7 @@ class Predicate(XMLObject):
   def _asPredicate(self):
     return self
 
+  security.declareProtected(Permissions.AccessContentsInformation, 'searchPredicate')
   def searchPredicate(self, **kw):
     """
       Returns a list of documents matching the predicate

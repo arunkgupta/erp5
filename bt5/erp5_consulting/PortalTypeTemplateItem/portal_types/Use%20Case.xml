@@ -27,7 +27,7 @@
         </item>
         <item>
             <key> <string>acquire_local_roles</string> </key>
-            <value> <int>1</int> </value>
+            <value> <int>0</int> </value>
         </item>
         <item>
             <key> <string>content_icon</string> </key>
@@ -70,6 +70,10 @@
         <item>
             <key> <string>title</string> </key>
             <value> <string>Use Case</string> </value>
+        </item>
+        <item>
+            <key> <string>type_class</string> </key>
+            <value> <string>XMLObject</string> </value>
         </item>
       </dictionary>
     </pickle>

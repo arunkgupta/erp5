@@ -234,6 +234,7 @@ class CopyContainer:
               return self.manage_main(self, REQUEST, update_menu=1)
 
   # Copy and paste support
+  security.declarePrivate('manage_afterClone')
   def manage_afterClone(self, item):
     """
         Add self to the workflow.
@@ -316,6 +317,7 @@ class CopyContainer:
       script()
 
 
+  security.declarePrivate('manage_afterAdd')
   def manage_afterAdd(self, item, container):
       """
           Add self to the catalog.
@@ -328,6 +330,7 @@ class CopyContainer:
           if getattr(self, 'isIndexable', 1):
             self.__recurse('manage_afterAdd', item, container)
 
+  security.declarePrivate('manage_beforeDelete')
   def manage_beforeDelete(self, item, container):
       """
           Remove self from the catalog.
@@ -379,28 +382,6 @@ class CopyContainer:
                            tag='%s' % uid,
                            group_method_id='portal_catalog/uncatalogObjectList',
                            serialization_tag=self.getRootDocumentPath()).unindexObject(uid=uid)
-
-  security.declareProtected(Permissions.ModifyPortalContent, 'moveObject')
-  def moveObject(self, idxs=None):
-      """
-          Reindex the object in the portal catalog.
-          If idxs is present, only those indexes are reindexed.
-          The metadata is always updated.
-
-          Also update the modification date of the object,
-          unless specific indexes were requested.
-
-          Passes is_object_moved to catalog to force
-          reindexing without creating new uid
-      """
-      if idxs is None: idxs = []
-      if idxs == []:
-          # Update the modification date.
-          if getattr(aq_base(self), 'notifyModified', _marker) is not _marker:
-              self.notifyModified()
-      catalog = getattr(self.getPortalObject(), 'portal_catalog', None)
-      if catalog is not None:
-          catalog.moveObject(self, idxs=idxs)
 
   def _notifyOfCopyTo(self, container, op=0):
       """Overiden to track object cut and pastes, and update related

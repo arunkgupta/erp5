@@ -2,7 +2,7 @@
 import string
 from DummyField import fields
 from DocumentTemplate.DT_Util import html_quote
-from DateTime import DateTime
+from DateTime import DateTime, Timezones
 from cgi import escape
 import types
 from DocumentTemplate.ustr import ustr
@@ -325,7 +325,7 @@ class TextWidget(Widget):
   """Text widget
   """
   property_names = Widget.property_names +\
-                    ['display_width', 'display_maxwidth', 'extra']
+                    ['display_width', 'display_maxwidth', 'input_type', 'extra']
 
   default = fields.StringField('default',
                                 title='Default',
@@ -352,13 +352,23 @@ class TextWidget(Widget):
                                           default="",
                                           required=0)
 
+  input_type = fields.StringField('input_type',
+                                  title='Input type',
+                                  description=(
+      "The type of the input field like 'color', 'date', 'email' etc."
+      "Note input types, not supported by old web browsers, will behave "
+      "as input type text."),
+                                  default="text",
+                                  required=0)
+
   def render(self, field, key, value, REQUEST, render_prefix=None):
     """Render text input field.
     """
     display_maxwidth = field.get_value('display_maxwidth') or 0
+    input_type = field.get_value('input_type') or 'text'
     if display_maxwidth > 0:
       return render_element("input",
-                            type="text",
+                            type=input_type,
                             name=key,
                             css_class=field.get_value('css_class'),
                             value=value,
@@ -367,7 +377,7 @@ class TextWidget(Widget):
                             extra=field.get_value('extra'))
     else:
       return render_element("input",
-                            type="text",
+                            type=input_type,
                             name=key,
                             css_class=field.get_value('css_class'),
                             value=value,
@@ -619,6 +629,8 @@ class TextAreaWidget(Widget):
         if value is None:
             return ''
         if not isinstance(value, (tuple, list)):
+            if not isinstance(value, basestring):
+                value = str(value)
             value = value.split('\n')
         line_separator = '<br/>'
         value_list = [escape(part).replace('\n', line_separator) for part in value]
@@ -1270,6 +1282,8 @@ class MultiCheckBoxWidget(MultiItemsWidget):
 
 MultiCheckBoxWidgetInstance = MultiCheckBoxWidget()
 
+gmt_timezones = [(x, x) for x in sorted(set(Timezones()))]
+
 class DateTimeWidget(Widget):
   """
     Added support for key in every call to render_sub_field
@@ -1351,6 +1365,15 @@ class DateTimeWidget(Widget):
                                         ("list", "list")],
                                   size=1)
 
+  default_timezone = fields.ListField('default_timezone',
+                                  title="Default Timezone",
+                                  description=(
+      "The default timezone display when inputing a new date"),
+                                  default="GMT",
+                                  items=gmt_timezones,
+                                  required=1,
+                                  size=1)
+
   input_order = fields.ListField('input_order',
                                   title="Input order",
                                   description=(
@@ -1378,8 +1401,8 @@ class DateTimeWidget(Widget):
   property_names = Widget.property_names +\
                     ['default_now', 'date_separator', 'time_separator',
                      'input_style', 'input_order', 'date_only',
-                     'ampm_time_style', 'timezone_style', 'hide_day',
-                     'hidden_day_is_last_day']
+                     'ampm_time_style', 'timezone_style', 'default_timezone',
+                     'hide_day', 'hidden_day_is_last_day']
 
   def getInputOrder(self, field):
     input_order = field.get_value('input_order')
@@ -1437,7 +1460,7 @@ class DateTimeWidget(Widget):
     hour   = None
     minute = None
     ampm   = None
-    timezone = None
+    timezone = field.get_value("default_timezone")
     if isinstance(value, DateTime):
       year = "%04d" % value.year()
       month = "%02d" % value.month()

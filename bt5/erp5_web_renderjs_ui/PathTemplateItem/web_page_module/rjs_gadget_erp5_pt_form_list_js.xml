@@ -98,77 +98,6 @@
             </value>
         </item>
         <item>
-            <key> <string>text_content</string> </key>
-            <value> <string>/*global window, rJS, RSVP */\n
-/*jslint nomen: true, indent: 2, maxerr: 3 */\n
-(function (window, rJS, RSVP) {\n
-  "use strict";\n
-\n
-  rJS(window)\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // Acquired methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareAcquiredMethod("renderPageHeader", "renderPageHeader")\n
-    .declareAcquiredMethod("whoWantToDisplayThisPage", "whoWantToDisplayThisPage")\n
-\n
-    /////////////////////////////////////////////////////////////////\n
-    // declared methods\n
-    /////////////////////////////////////////////////////////////////\n
-    .declareMethod(\'render\', function (options) {\n
-      var gadget = this,\n
-        form_options = options.erp5_form || {},\n
-        search_options = {};\n
-\n
-      form_options.erp5_document = options.erp5_document;\n
-      form_options.form_definition = options.form_definition;\n
-      // XXX not generic, fix later\n
-      if (options.erp5_searchfield) {\n
-        form_options.form_definition.extended_search =  options.erp5_searchfield.extended_search;\n
-        search_options.extended_search = options.erp5_searchfield.extended_search;\n
-      }\n
-      form_options.view = options.view;\n
-\n
-      return new RSVP.Queue()\n
-        .push(function () {\n
-          var new_content_action = options.erp5_document._links.action_object_new_content_action;\n
-          if (new_content_action !== undefined) {\n
-            new_content_action = gadget.whoWantToDisplayThisPage({name: new_content_action.name, editable: true});\n
-          } else {\n
-            new_content_action = "";\n
-          }\n
-\n
-          return RSVP.all([\n
-            gadget.getDeclaredGadget("erp5_searchfield"),\n
-            gadget.getDeclaredGadget("erp5_form"),\n
-            gadget.whoWantToDisplayThisPage({name: options.view, page: "breadcrumb"}),\n
-            new_content_action,\n
-            gadget.whoWantToDisplayThisPage({page: "action", name: options.view})\n
-          ]);\n
-        })\n
-        .push(function (all_gadget) {\n
-          return RSVP.all([\n
-            all_gadget[0].render(search_options),\n
-            all_gadget[1].render(form_options),\n
-            gadget.renderPageHeader({\n
-              panel_action: true,\n
-              jump_url: "",\n
-              cut_url: "",\n
-              actions_url: all_gadget[4],\n
-              export_url: "",\n
-              add_url: all_gadget[3],\n
-              page_title: options.erp5_document.title,\n
-              breadcrumb_url: all_gadget[2]\n
-            })\n
-\n
-          ]);\n
-        });\n
-\n
-    });\n
-\n
-}(window, rJS, RSVP));</string> </value>
-        </item>
-        <item>
             <key> <string>title</string> </key>
             <value> <string>Gadget ERP5 Form List JS</string> </value>
         </item>
@@ -287,7 +216,7 @@
             </item>
             <item>
                 <key> <string>actor</string> </key>
-                <value> <string>romain</string> </value>
+                <value> <string>zope</string> </value>
             </item>
             <item>
                 <key> <string>comment</string> </key>
@@ -301,7 +230,7 @@
             </item>
             <item>
                 <key> <string>serial</string> </key>
-                <value> <string>937.65471.52542.37171</string> </value>
+                <value> <string>950.28943.57832.60535</string> </value>
             </item>
             <item>
                 <key> <string>state</string> </key>
@@ -319,8 +248,8 @@
                     </tuple>
                     <state>
                       <tuple>
-                        <float>1412596633.53</float>
-                        <string>GMT</string>
+                        <float>1460389440.4</float>
+                        <string>UTC</string>
                       </tuple>
                     </state>
                   </object>

@@ -120,12 +120,14 @@ class File(Document, CMFFile):
   security.declareProtected( Permissions.ModifyPortalContent, 'edit' )
   edit = WorkflowMethod( _edit )
 
+  security.declareProtected(Permissions.View, 'get_size')
   def get_size(self):
     """
     has to be overwritten here, otherwise WebDAV fails
     """
     return self.getSize()
 
+  security.declareProtected(Permissions.View, 'getcontentlength')
   getcontentlength = get_size
 
   def _get_content_type(*args, **kw):
@@ -198,10 +200,6 @@ class File(Document, CMFFile):
       return None
     else:
       return str(data)
-
-  security.declareProtected(Permissions.ModifyPortalContent,'PUT')
-  def PUT(self, REQUEST, RESPONSE):
-    CMFFile.PUT(self, REQUEST, RESPONSE)
 
   # DAV Support
   PUT = CMFFile.PUT

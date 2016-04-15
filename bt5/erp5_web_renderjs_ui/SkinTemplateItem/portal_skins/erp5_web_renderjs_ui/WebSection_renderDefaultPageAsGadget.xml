@@ -49,19 +49,6 @@
             </value>
         </item>
         <item>
-            <key> <string>_body</string> </key>
-            <value> <string>if REQUEST is None:\n
-  REQUEST = context.REQUEST\n
-if response is None:\n
-  response = REQUEST.RESPONSE\n
-\n
-web_section = context\n
-default_web_page = web_section.getDefaultDocumentValue()\n
-\n
-return default_web_page.WebPage_viewAsWeb()\n
-</string> </value>
-        </item>
-        <item>
             <key> <string>_params</string> </key>
             <value> <string>REQUEST=None, response=None</string> </value>
         </item>

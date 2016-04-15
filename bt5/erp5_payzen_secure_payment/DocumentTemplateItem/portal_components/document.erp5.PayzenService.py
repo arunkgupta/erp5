@@ -6,13 +6,42 @@ from Products.ERP5Type.Document import newTempDocument
 import hashlib
 from zLOG import LOG, WARNING
 import datetime
+import os
+import time
+from Products.DCWorkflow.DCWorkflow import ValidationFailed
 
+present = False
+tz = None
+if 'TZ' in os.environ:
+  present = True
+  tz = os.environ['TZ']
+os.environ['TZ'] = 'UTC'
+time.tzset()
 try:
   import suds
 except ImportError:
   class PayzenSOAP:
     pass
 else:
+  def setUTCTimeZone(fn):
+    def wrapped(*args, **kwargs):
+      present = False
+      tz = None
+      if 'TZ' in os.environ:
+        present = True
+        tz = os.environ['TZ']
+      os.environ['TZ'] = 'UTC'
+      time.tzset()
+      try:
+        return fn(*args, **kwargs)
+      finally:
+        if present:
+          os.environ['TZ'] = tz
+        else:
+          del(os.environ['TZ'])
+        time.tzset()
+    return wrapped
+      
   class PayzenSOAP:
     """SOAP communication
 
@@ -48,6 +77,7 @@ else:
       signature = self._getSignature(data, received_sorted_keys)
       return signature == data.signature
 
+    @setUTCTimeZone
     def soap_getInfo(self, transmissionDate, transactionId):
       """Returns getInfo as dict, booelan, string, string
 
@@ -106,6 +136,7 @@ else:
 
       return [data_kw, signature, last_sent, last_received]
 
+    @setUTCTimeZone
     def soap_duplicate(self, transmissionDate, transactionId, presentationDate,
       newTransactionId, amount, devise, orderId='', orderInfo='', orderInfo2='',
       orderInfo3='', validationMode=0, comment=''):
@@ -166,6 +197,67 @@ else:
         signature = False
 
       return [data_kw, signature, last_sent, last_received]
+
+    @setUTCTimeZone
+    def soap_cancel(self, transmissionDate, transactionId, comment=''):
+      # prepare with passed parameters
+      kw = dict(transmissionDate=transmissionDate, transactionId=transactionId,
+        comment=comment)
+
+      signature_sorted_key_list= ['shopId', 'transmissionDate', 'transactionId',
+        'sequenceNb', 'ctxMode', 'comment']
+      kw.update(
+        ctxMode=self.getPayzenVadsCtxMode(),
+        shopId=self.getServiceUsername(),
+        sequenceNb=1,
+      )
+      kw['wsSignature'] = self._getSignature(kw, signature_sorted_key_list)
+      # Note: Code shall not raise since now, as communication begin and caller
+      #       will have to log sent/received messages.
+      client = suds.client.Client(self.wsdl_link.getUrlString())
+      data = client.service.cancel(**kw)
+      # Note: Code shall not raise since now, as communication begin and caller
+      #       will have to log sent/received messages.
+      try:
+        data_kw = dict(data)
+        for k in data_kw.keys():
+          v = data_kw[k]
+          if not isinstance(v, str):
+            data_kw[k] = str(v)
+      except Exception:
+        data_kw = {}
+        signature = False
+        LOG('PayzenService', WARNING,
+          'Issue during processing data_kw:', error=True)
+      else:
+        try:
+          signature = self._check_transactionInfoSignature(data)
+        except Exception:
+          LOG('PayzenService', WARNING, 'Issue during signature calculation:',
+            error=True)
+          signature = False
+
+      try:
+        last_sent = str(client.last_sent())
+      except Exception:
+        LOG('PayzenService', WARNING,
+          'Issue during converting last_sent to string:', error=True)
+        signature = False
+
+      try:
+        last_received = str(client.last_received())
+      except Exception:
+        LOG('PayzenService', WARNING,
+          'Issue during converting last_received to string:', error=True)
+        signature = False
+
+      return [data_kw, signature, last_sent, last_received]
+finally:
+  if present:
+    os.environ['TZ'] = tz
+  else:
+    del(os.environ['TZ'])
+  time.tzset()
 
 class PayzenService(XMLObject, PayzenSOAP):
   meta_type = 'Payzen Service'
@@ -238,7 +330,17 @@ class PayzenService(XMLObject, PayzenSOAP):
 
   def navigate(self, page_template, payzen_dict, REQUEST=None, **kw):
     """Returns configured template used to do the payment"""
-    self.Base_checkConsistency()
+    check_result = self.checkConsistency()
+    message_list = []
+    for err in check_result:
+      if getattr(err, 'getTranslatedMessage', None) is not None:
+        message_list.append(err.getTranslatedMessage())
+      else:
+        # backward compatibility:
+        message_list.append(err[3])
+    if message_list:
+      raise ValidationFailed, message_list
+
     temp_document = newTempDocument(self, 'id')
     temp_document.edit(
       link_url_string=self.getLinkUrlString(),

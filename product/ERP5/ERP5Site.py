@@ -260,6 +260,10 @@ class ERP5Site(FolderMixIn, CMFSite, CacheCookieMixin):
   security = ClassSecurityInfo()
   security.declareObjectProtected(Permissions.AccessContentsInformation)
 
+  def __before_publishing_traverse__(self, self2, request):
+    request.RESPONSE.realm = None
+    return super(ERP5Site, self).__before_publishing_traverse__(self2, request)
+
   def _createInitialSiteManager(self):
     # This section of code is inspired by
     # Products.CMFDefault.upgrade.to21.upgrade_root_site_manager(),
@@ -364,6 +368,12 @@ class ERP5Site(FolderMixIn, CMFSite, CacheCookieMixin):
 
     return self
 
+  security.declareProtected(Permissions.AccessContentsInformation,
+                            'isDeletable')
+  def isDeletable(self, check_relation):
+    return False
+
+  security.declarePrivate('manage_beforeDelete')
   def manage_beforeDelete(self, item, container):
     # skin is setup during __before_publishing_traverse__, which
     # doesn't happen when the object is being deleted from the management
@@ -1420,6 +1430,20 @@ class ERP5Site(FolderMixIn, CMFSite, CacheCookieMixin):
     return self._getPortalGroupedTypeList('amount_generator_cell')
 
   security.declareProtected(Permissions.AccessContentsInformation,
+                            'getPortalAmountGeneratorAllTypeList')
+  def getPortalAmountGeneratorAllTypeList(self, transformation):
+    """
+    Return amount generator types, including lines & cells,
+    but only or without those related to transformations.
+    """
+    result = list(self.getPortalAmountGeneratorTypeList())
+    result += self.getPortalAmountGeneratorLineTypeList()
+    result += self.getPortalAmountGeneratorCellTypeList()
+    if transformation:
+      return tuple(x for x in result if x.startswith('Transformation'))
+    return tuple(x for x in result if not x.startswith('Transformation'))
+
+  security.declareProtected(Permissions.AccessContentsInformation,
                             'getPortalBusinessProcessTypeList')
   def getPortalBusinessProcessTypeList(self):
     """
@@ -1503,54 +1527,76 @@ class ERP5Site(FolderMixIn, CMFSite, CacheCookieMixin):
 
   security.declareProtected(Permissions.AccessContentsInformation,
                             'getDefaultModuleId')
-  def getDefaultModuleId(self, portal_type, default=MARKER):
+  def getDefaultModuleId(self, portal_type, default=MARKER, only_visible=False):
     """
     Return default module id where a object with portal_type can
     be created.
     """
-    portal_object = self
-    module_id = None
-    # first try to find by naming convention
-    expected_module_id = portal_type.lower().replace(' ','_')
-    if portal_object._getOb(expected_module_id, None) is not None:
-      module_id = expected_module_id
+    try:
+      module = self.getDefaultModuleValue(portal_type, only_visible=only_visible)
+    except ValueError:
+      if default is MARKER:
+        raise ValueError('Unable to find module for portal_type: ' + portal_type)
+      return default
     else:
-      expected_module_id += '_module'
-      if portal_object._getOb(expected_module_id, None) is not None:
-        module_id = expected_module_id
-      # then look for module where the type is allowed
-      else:
-        for expected_module_id in portal_object.objectIds(('ERP5 Folder',)):
-          module = portal_object._getOb(expected_module_id, None)
-          if module is not None:
-            if portal_type in self.portal_types[module.getPortalType()].\
-                                      allowed_content_types:
-              module_id = expected_module_id
-              break
-
-    if module_id is None:
-      if default is not MARKER:
-        return default
-      else:
-        # now we fail
-        LOG('ERP5Site, getDefaultModuleId', 0,
-            'Unable to find default module for portal_type: %s' % \
-             portal_type)
-        raise ValueError, 'Unable to find module for portal_type: %s' % \
-               portal_type
-
-    return module_id
+      return module.getId()
 
   security.declareProtected(Permissions.AccessContentsInformation,
-                            'getDefaultModule')
+                            'getDefaultModuleValue')
+  def getDefaultModuleValue(self, portal_type, default=MARKER, only_visible=False):
+    """
+    Return default module where a object with portal_type can be created
+    portal_type (str)
+      Module or top-level document portal type.
+    default (anything)
+      Value to return if no module can be found from given portal type.
+      If not given and module is not found, ValueError is raised.
+    only_visible (bool)
+      When true, check that given portal type is part of module's visible
+      content types, else return default.
+    """
+    # first try to find by naming convention
+    expected_module_id = portal_type.lower().replace(' ','_')
+    module = self._getOb(expected_module_id, None)
+    if module is not None:
+      return module
+    if only_visible:
+      allowed = lambda x: (
+        x is not None and
+        portal_type in x.getVisibleAllowedContentTypeList()
+      )
+    else:
+      getTypeInfo = self.portal_types.getTypeInfo
+      allowed = lambda x: (
+        x is not None and
+        portal_type in getTypeInfo(x).getTypeAllowedContentTypeList()
+      )
+    expected_module_id += '_module'
+    module = self._getOb(expected_module_id, None)
+    if allowed(module):
+      return module
+    # then look for module where the type is allowed
+    for expected_module_id in self.objectIds(('ERP5 Folder',)):
+      module = self._getOb(expected_module_id, None)
+      if allowed(module):
+        return module
+    if default is MARKER:
+      raise ValueError('Unable to find module for portal_type: ' + portal_type)
+    return default
+
+  # BBB
+  security.declareProtected(
+    Permissions.AccessContentsInformation,
+    'getDefaultModule',
+  )
   def getDefaultModule(self, portal_type, default=MARKER):
     """
-      Return default module where a object with portal_type can be created
+    For backward-compatibility.
+    Use getDefaultModuleValue (beware of slight "default" semantic change !).
     """
     module_id = self.getDefaultModuleId(portal_type, default)
     if module_id:
       return getattr(self, module_id, None)
-    return None
 
   security.declareProtected(Permissions.AddPortalContent, 'newContent')
   def newContent(self, id=None, portal_type=None, **kw):
@@ -1577,12 +1623,16 @@ class ERP5Site(FolderMixIn, CMFSite, CacheCookieMixin):
     """
     return ()
 
-  def log(self, description, content='', level=INFO):
-    """Put a log message """
+  def log(self, *args, **kw):
+    """Put a log message
+
+    See the warning in Products.ERP5Type.Log.log
+    Catchall parameters also make this method not publishable to avoid DoS.
+    """
     warnings.warn("The usage of ERP5Site.log is deprecated.\n"
                   "Please use Products.ERP5Type.Log.log instead.",
                   DeprecationWarning)
-    unrestrictedLog(description, content = content, level = level)
+    unrestrictedLog(*args, **kw)
 
   security.declarePublic('setPlacelessDefaultReindexParameters')
   def setPlacelessDefaultReindexParameters(self, **kw):
@@ -2090,6 +2140,8 @@ class ERP5Generator(PortalGenerator):
       erp5security_dispatcher.addERP5GroupManager('erp5_groups')
       erp5security_dispatcher.addERP5RoleManager('erp5_roles')
       erp5security_dispatcher.addERP5UserFactory('erp5_user_factory')
+      erp5security_dispatcher.addERP5DumbHTTPExtractionPlugin(
+                                        'erp5_dumb_http_extraction')
       # Register ERP5UserManager Interface
       p.acl_users.erp5_users.manage_activateInterfaces(
                                         ('IAuthenticationPlugin',
@@ -2098,6 +2150,8 @@ class ERP5Generator(PortalGenerator):
       p.acl_users.erp5_roles.manage_activateInterfaces(('IRolesPlugin',))
       p.acl_users.erp5_user_factory.manage_activateInterfaces(
                                         ('IUserFactoryPlugin',))
+      p.acl_users.erp5_dumb_http_extraction.manage_activateInterfaces(
+                                        ('IExtractionPlugin',))
 
   def setupPermissions(self, p):
     permission_dict = {
@@ -2158,7 +2212,13 @@ class ERP5Generator(PortalGenerator):
       assert not p.hasObject('portal_activities')
       addERP5Tool(p, 'portal_activities', 'Activity Tool')
       # Initialize Activities
-      p.portal_activities.manageClearActivities(keep=0)
+      p.portal_activities.manageClearActivities()
+      # Reindex already existing tools
+      for e in p.objectValues():
+        try:
+          e.reindexObject()
+        except TypeError:
+          pass
 
     if not p.hasObject('content_type_registry'):
       self.setupMimetypes(p)

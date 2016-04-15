@@ -33,12 +33,15 @@ from Shared.DC.ZRDB.Results import Results
 from zLOG import LOG, TRACE, INFO, WARNING, ERROR, PANIC
 from ZODB.POSException import ConflictError
 from Products.CMFActivity.ActivityTool import (
-  Message, MESSAGE_NOT_EXECUTED, MESSAGE_EXECUTED)
+  Message, MESSAGE_NOT_EXECUTED, MESSAGE_EXECUTED, SkippedMessage)
 from Products.CMFActivity.ActiveObject import INVOKE_ERROR_STATE
 from Products.CMFActivity.ActivityRuntimeEnvironment import (
   DEFAULT_MAX_RETRY, ActivityRuntimeEnvironment, getTransactionalVariable)
 from Queue import Queue, VALIDATION_ERROR_DELAY, VALID, INVALID_PATH
 from Products.CMFActivity.Errors import ActivityFlushError
+
+# TODO: Limit by size in bytes instead of number of rows.
+MAX_MESSAGE_LIST_SIZE = 100
 
 def sort_message_key(message):
   # same sort key as in SQLBase.getMessageList
@@ -81,6 +84,7 @@ def sqltest_dict():
   _('processing_node')
   _('serialization_tag')
   _('tag')
+  _('retry')
   _('to_date', column="date", op="<=")
   _('uid')
   return sqltest_dict
@@ -90,6 +94,61 @@ class SQLBase(Queue):
   """
     Define a set of common methods for SQL-based storage of activities.
   """
+  def initialize(self, activity_tool, clear):
+    folder = activity_tool.getPortalObject().portal_skins.activity
+    try:
+      createMessageTable = folder.SQLBase_createMessageTable
+    except AttributeError:
+      return
+    if clear:
+      folder.SQLBase_dropMessageTable(table=self.sql_table)
+      createMessageTable(table=self.sql_table)
+    else:
+      src = createMessageTable._upgradeSchema(create_if_not_exists=1,
+                                              initialize=self._initialize,
+                                              table=self.sql_table)
+      if src:
+        LOG('CMFActivity', INFO, "%r table upgraded\n%s"
+            % (self.sql_table, src))
+
+  def _initialize(self, db, column_list):
+      LOG('CMFActivity', ERROR, "Non-empty %r table upgraded."
+          " The following added columns could not be initialized: %s"
+          % (self.sql_table, ", ".join(column_list)))
+
+  def prepareQueueMessageList(self, activity_tool, message_list):
+    registered_message_list = [m for m in message_list if m.is_registered]
+    portal = activity_tool.getPortalObject()
+    for i in xrange(0, len(registered_message_list), MAX_MESSAGE_LIST_SIZE):
+      message_list = registered_message_list[i:i+MAX_MESSAGE_LIST_SIZE]
+      uid_list = portal.portal_ids.generateNewIdList(self.uid_group,
+        id_count=len(message_list), id_generator='uid')
+      path_list = ['/'.join(m.object_path) for m in message_list]
+      active_process_uid_list = [m.active_process_uid for m in message_list]
+      method_id_list = [m.method_id for m in message_list]
+      priority_list = [m.activity_kw.get('priority', 1) for m in message_list]
+      date_list = [m.activity_kw.get('at_date') for m in message_list]
+      group_method_id_list = [m.getGroupId() for m in message_list]
+      tag_list = [m.activity_kw.get('tag', '') for m in message_list]
+      serialization_tag_list = [m.activity_kw.get('serialization_tag', '')
+                                for m in message_list]
+      processing_node_list = []
+      for m in message_list:
+        m.order_validation_text = x = self.getOrderValidationText(m)
+        processing_node_list.append(0 if x == 'none' else -1)
+      portal.SQLBase_writeMessageList(
+        table=self.sql_table,
+        uid_list=uid_list,
+        path_list=path_list,
+        active_process_uid_list=active_process_uid_list,
+        method_id_list=method_id_list,
+        priority_list=priority_list,
+        message_list=map(Message.dump, message_list),
+        group_method_id_list=group_method_id_list,
+        date_list=date_list,
+        tag_list=tag_list,
+        processing_node_list=processing_node_list,
+        serialization_tag_list=serialization_tag_list)
 
   def getNow(self, context):
     """
@@ -130,12 +189,45 @@ class SQLBase(Queue):
                              processing=line.processing)
       for line in result]
 
-  def _getPriority(self, activity_tool, method, default):
-    result = method()
-    if not result:
-      return default
-    assert len(result) == 1, len(result)
-    return result[0]['priority']
+  def countMessage(self, activity_tool, tag=None, path=None,
+                   method_id=None, message_uid=None, **kw):
+    """Return the number of messages which match the given parameters.
+    """
+    if isinstance(tag, str):
+      tag = [tag]
+    if isinstance(path, str):
+      path = [path]
+    if isinstance(method_id, str):
+      method_id = [method_id]
+    result = activity_tool.SQLBase_validateMessageList(table=self.sql_table,
+                                                       method_id=method_id,
+                                                       path=path,
+                                                       message_uid=message_uid,
+                                                       tag=tag,
+                                                       serialization_tag=None,
+                                                       count=1)
+    return result[0].uid_count
+
+  def hasActivity(self, activity_tool, object, method_id=None, only_valid=None,
+                  active_process_uid=None):
+    hasMessage = getattr(activity_tool, 'SQLBase_hasMessage', None)
+    if hasMessage is not None:
+      if object is None:
+        path = None
+      else:
+        path = '/'.join(object.getPhysicalPath())
+      result = hasMessage(table=self.sql_table, path=path, method_id=method_id,
+        only_valid=only_valid, active_process_uid=active_process_uid)
+      if result:
+        return result[0].message_count > 0
+    return 0
+
+  def getPriority(self, activity_tool):
+    result = activity_tool.SQLBase_getPriority(table=self.sql_table)
+    if result:
+      assert len(result) == 1, len(result)
+      return result[0]['priority']
+    return Queue.getPriority(self, activity_tool)
 
   def _retryOnLockError(self, method, args=(), kw={}):
     while True:
@@ -145,6 +237,36 @@ class SQLBase(Queue):
         # Note that this code assumes that a database adapter translates
         # a lock error into a conflict error.
         LOG('SQLBase', INFO, 'Got a lock error, retrying...')
+
+  # Validation private methods
+  def _validate(self, activity_tool, method_id=None, message_uid=None, path=None, tag=None,
+                serialization_tag=None):
+    if isinstance(method_id, str):
+      method_id = [method_id]
+    if isinstance(path, str):
+      path = [path]
+    if isinstance(tag, str):
+      tag = [tag]
+
+    if method_id or message_uid or path or tag or serialization_tag:
+      result = activity_tool.SQLBase_validateMessageList(table=self.sql_table,
+          method_id=method_id,
+          message_uid=message_uid,
+          path=path,
+          tag=tag,
+          count=False,
+          serialization_tag=serialization_tag)
+      message_list = []
+      for line in result:
+        m = Message.load(line.message,
+                         line=line,
+                         uid=line.uid,
+                         date=line.date,
+                         processing_node=line.processing_node)
+        if not hasattr(m, 'order_validation_text'): # BBB
+          m.order_validation_text = self.getOrderValidationText(m)
+        message_list.append(m)
+      return message_list
 
   def _validate_after_method_id(self, activity_tool, message, value):
     return self._validate(activity_tool, method_id=value)
@@ -448,7 +570,8 @@ class SQLBase(Queue):
         if uid_to_duplicate_uid_list_dict is not None:
           make_available_uid_list += uid_to_duplicate_uid_list_dict.get(uid, ())
         if (m.exc_type and # m.exc_type may be None
-            m.conflict_retry and issubclass(m.exc_type, ConflictError)):
+            (m.conflict_retry if issubclass(m.exc_type, ConflictError) else
+             m.exc_type is SkippedMessage)):
           delay_uid_list.append(uid)
         else:
           max_retry = m.max_retry
@@ -465,7 +588,7 @@ class SQLBase(Queue):
           delay = m.delay
           if delay is None:
             # By default, make delay quadratic to the number of retries.
-            delay = VALIDATION_ERROR_DELAY * (retry * retry + 1) / 2
+            delay = VALIDATION_ERROR_DELAY * (retry * retry + 1) * 2
           try:
             # Immediately update, because values different for every message
             activity_tool.SQLBase_reactivate(table=self.sql_table,
@@ -565,3 +688,12 @@ class SQLBase(Queue):
         invoke(Message.load(line.message, uid=line.uid, line=line))
     if uid_list:
       activity_tool.SQLBase_delMessage(table=self.sql_table, uid=uid_list)
+
+  # Required for tests
+  def timeShift(self, activity_tool, delay, processing_node=None):
+    """
+      To simulate time shift, we simply substract delay from
+      all dates in message(_queue) table
+    """
+    activity_tool.SQLBase_timeShift(table=self.sql_table, delay=delay,
+                                    processing_node=processing_node)

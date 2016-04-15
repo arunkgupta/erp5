@@ -28,6 +28,7 @@
 ##############################################################################
 
 from AccessControl import ClassSecurityInfo, getSecurityManager
+from Products.ERP5Type.Globals import InitializeClass
 from ZODB.POSException import ConflictError
 from Products.ERP5Type import Permissions
 from Products.ERP5Type.Utils import convertToUpperCase
@@ -274,3 +275,5 @@ class DiscoverableMixin(CachedConvertableMixin):
     if title_list:
       result['title'] = title_list[0]
     return result
+
+InitializeClass(DiscoverableMixin)

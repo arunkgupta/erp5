@@ -7,6 +7,10 @@
     <pickle>
       <dictionary>
         <item>
+            <key> <string>_Cacheable__manager_id</string> </key>
+            <value> <string>http_cache</string> </value>
+        </item>
+        <item>
             <key> <string>__name__</string> </key>
             <value> <string>mode_test.css</string> </value>
         </item>
@@ -21,20 +25,6 @@
             <value>
               <dictionary/>
             </value>
-        </item>
-        <item>
-            <key> <string>raw</string> </key>
-            <value> <string>.mt-output .mt-token {\n
-  border: 1px solid #ddd;\n
-  white-space: pre;\n
-  font-family: "Consolas", monospace;\n
-  text-align: center;\n
-}\n
-\n
-.mt-output .mt-style {\n
-  font-size: x-small;\n
-}\n
-</string> </value>
         </item>
       </dictionary>
     </pickle>
